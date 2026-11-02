@@ -4919,6 +4919,9 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
   },
   externalTeams: {
     title: 'External Teams',
+    driven: 'Externally driven chat',
+    unavailable: 'The board for this external chat is currently unavailable',
+    retry: 'Retry',
     intro:
       'Teams where Claude Code is the brain and Unreal Box is the studio. The thinking runs on Claude Code; Unreal Box keeps the board, mail, snapshots and acceptance record.',
     empty: 'No external teams yet',

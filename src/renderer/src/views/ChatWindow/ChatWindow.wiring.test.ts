@@ -33,6 +33,11 @@ vi.mock('vue-router', () => ({
 }))
 
 const stubs = {
+  ExternalTeamChat: {
+    name: 'ExternalTeamChat',
+    props: { teamId: String },
+    template: '<div />'
+  },
   Welcome: {
     name: 'Welcome',
     props: { chatSid: String, forceChatView: Boolean },
@@ -52,6 +57,14 @@ beforeEach(() => {
 })
 
 describe('ChatWindow prop 连线', () => {
+  it('外部对话拖到独立窗口后仍是团队任务板，不挂载普通输入区', () => {
+    routeQuery.sid = 'ext-2'
+    const wrapper = mountChatWindow()
+    expect(wrapper.findComponent({ name: 'ExternalTeamChat' }).props('teamId')).toBe('ext-2')
+    expect(wrapper.findComponent({ name: 'Welcome' }).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('路由上的 sid 以 chatSid 传给 <Welcome>', () => {
     const welcome = mountChatWindow().findComponent({ name: 'Welcome' })
     expect(welcome.exists()).toBe(true)

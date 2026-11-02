@@ -4761,6 +4761,9 @@ export default {
   },
   externalTeams: {
     title: '外部团队',
+    driven: '外部驱动的对话',
+    unavailable: '暂时无法读取这条外部对话的任务板',
+    retry: '重试',
     intro:
       'Claude Code 当大脑、盒子当工作室的团队。思考花的是 Claude Code 的额度，盒子只记任务板、留言、快照和验收。',
     empty: '还没有外部团队',

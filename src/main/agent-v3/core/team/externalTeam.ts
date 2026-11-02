@@ -14,6 +14,7 @@
 import { randomUUID } from 'crypto'
 import { promises as fs } from 'fs'
 import { join } from 'path'
+import { sendToAppWindows } from '../../../appWindows'
 
 import type { ApprovalMode } from '../approval'
 import type { GoalVerdict } from '../goalLoop'
@@ -169,6 +170,8 @@ export interface ExternalTeamRegistryDeps {
   stateRoot: () => string
   now?: () => number
   newId?: () => string
+  /** 记录完成落盘后通知项目对话列表；创建团队、补工程路径和验收都不一定改任务板。 */
+  onChange?: (id: string) => void
 }
 
 export function createExternalTeamRegistry(deps: ExternalTeamRegistryDeps): ExternalTeamRegistry {
@@ -205,6 +208,12 @@ export function createExternalTeamRegistry(deps: ExternalTeamRegistryDeps): Exte
     const extra = unsaved.get(record.id)
     if (extra !== undefined && (record.state.lastWriteAt ?? -Infinity) >= extra) {
       unsaved.delete(record.id)
+    }
+    try {
+      deps.onChange?.(record.id)
+    } catch (error) {
+      // 文件已经保存，窗口关闭导致通知失败不能把这次写入报成失败。
+      console.warn('[AgentV3][ExternalTeam] 通知界面刷新失败:', error)
     }
   }
 
@@ -318,6 +327,10 @@ let shared: ExternalTeamRegistry | undefined
  * 共用一份才共用同一条读改写的串行链
  */
 export function sharedExternalTeamRegistry(): ExternalTeamRegistry {
-  shared ??= createExternalTeamRegistry({ dirsFor: teamDirsFor, stateRoot: sessionsDir })
+  shared ??= createExternalTeamRegistry({
+    dirsFor: teamDirsFor,
+    stateRoot: sessionsDir,
+    onChange: (id) => sendToAppWindows('agent-v3:team-board', { sessionId: id })
+  })
   return shared
 }

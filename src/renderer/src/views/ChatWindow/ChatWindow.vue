@@ -13,6 +13,7 @@ import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import Welcome from '@renderer/views/Assistant/Welcome.vue'
+import ExternalTeamChat from '@renderer/views/Assistant/components/ExternalTeamChat.vue'
 import SensitiveActionConfirm from '@renderer/components/SensitiveActionConfirm.vue'
 import { useI18n } from '@renderer/hooks/useI18n'
 import { followLocaleFromOtherWindows } from '@renderer/i18n'
@@ -105,7 +106,8 @@ const close = (): void => window.api.window.close()
     </header>
 
     <main class="chat-window__body">
-      <Welcome v-if="sid" :chat-sid="sid" />
+      <ExternalTeamChat v-if="sid.startsWith('ext-')" :team-id="sid" />
+      <Welcome v-else-if="sid" :chat-sid="sid" />
     </main>
 
     <SensitiveActionConfirm />

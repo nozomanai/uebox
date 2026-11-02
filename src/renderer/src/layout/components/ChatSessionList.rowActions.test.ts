@@ -29,6 +29,9 @@ function mountList(): VueWrapper {
 beforeEach(() => {
   setActivePinia(createPinia())
   ;(window as unknown as { api: unknown }).api = {
+    on: vi.fn(),
+    off: vi.fn(),
+    agentV3: { externalTeams: vi.fn().mockResolvedValue({ success: true, teams: [] }) },
     websocket: { getProjects: vi.fn().mockResolvedValue([]), onProjectsChanged: vi.fn() }
   }
 })

@@ -64,17 +64,42 @@ describe('sidebarTools', () => {
     expect(keys).not.toContain('Model3DViewer')
     expect(keys).not.toContain('NoteEditor')
     expect(keys).not.toContain('ServerManagement')
+    expect(keys).not.toContain('ExternalTeams')
 
     // 偏好设置的 isShowInMenu 是 true，但 SideMenu 按 key 把它剔出工具列表 ——
     // 这里镜像同一层排除后再验证拆分
     const excluded = new Set(['Profile', 'Preferences'])
     const featureItems = menu.filter((i) => !excluded.has(i.key))
-    // 外部团队（Claude Code 当大脑的团队任务板）也是一个工具，默认收进「更多」
-    expect(featureItems.map((i) => i.key).sort()).toEqual([...KNOWN_KEYS, 'ExternalTeams'].sort())
+    // 外部驱动的对话属于项目列表，不再单列成工具。
+    expect(featureItems.map((i) => i.key).sort()).toEqual([...KNOWN_KEYS].sort())
 
     const { pinned, more } = resolveSidebarTools(featureItems, DEFAULT_SIDEBAR_TOOLS_PREFS)
-    expect(more.map((i) => i.key)).toEqual(['Notebooks', 'AIGCStudio', 'ExternalTeams'])
+    expect(more.map((i) => i.key)).toEqual(['Notebooks', 'AIGCStudio'])
     expect(pinned.map((i) => i.key)).toContain('Home')
+  })
+
+  it('旧外部团队链接回到统一对话入口，并保留明确的对话 id', () => {
+    const legacy = mainRoutes.children?.find((route) => route.name === 'ExternalTeams')
+    expect(legacy).toBeDefined()
+    expect(legacy?.component).toBeUndefined()
+    expect(typeof legacy?.redirect).toBe('function')
+    if (typeof legacy?.redirect !== 'function') throw new Error('Missing legacy redirect')
+    expect(
+      legacy.redirect({
+        query: { sid: 'ext-2' },
+        path: '/external-teams',
+        fullPath: '/external-teams?sid=ext-2',
+        name: 'ExternalTeams',
+        params: {},
+        hash: '',
+        matched: [],
+        meta: {},
+        redirectedFrom: undefined
+      })
+    ).toEqual({
+      name: 'AssistantWelcome',
+      query: { sid: 'ext-2' }
+    })
   })
 
   it('顺序清洗：剔除已不存在的工具、去重，新工具按默认顺序补齐', () => {

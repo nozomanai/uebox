@@ -483,10 +483,18 @@ export const agentV3API = {
     return result?.team ?? null
   },
 
-  /** 外部团队（Claude Code 当大脑），最近的在前。读不到给空列表 */
+  /** 外部驱动的对话，最近的在前。读取失败抛出，由列表保留上一次快照。 */
   async externalTeams(): Promise<ExternalTeamSummary[]> {
     const result = await window.api.agentV3.externalTeams()
-    return result?.teams ?? []
+    return unwrapResult({ ...result, data: result?.teams ?? [] })
+  },
+
+  onTeamBoardChanged(callback: (sessionId: string) => void): () => void {
+    const handler = window.api.on('agent-v3:team-board', (...args: unknown[]) => {
+      const payload = args[0] as { sessionId?: string } | undefined
+      if (payload?.sessionId) callback(payload.sessionId)
+    })
+    return () => window.api.off('agent-v3:team-board', handler)
   },
 
   /**

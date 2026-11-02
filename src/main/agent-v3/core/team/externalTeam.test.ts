@@ -1,5 +1,5 @@
 /** @vitest-environment node */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,12 @@ import { defineTool, type UnrealAgentTool } from '../../tools/defineTool'
 import { forceReleaseAll, getLockOwner } from '../assetLock'
 import { getTargetProjectPath } from '../projectTargetContext'
 import { editorKeyActive } from './editorKey'
-import { createExternalTeamRegistry, gateFacts, type ExternalTeamRegistry } from './externalTeam'
+import {
+  createExternalTeamRegistry,
+  gateFacts,
+  type ExternalTeamRecord,
+  type ExternalTeamRegistry
+} from './externalTeam'
 import { createExternalTeamSession, type ExternalTeamSession } from './externalTeamTools'
 import { runWithTeamSeat } from './teamSeatContext'
 import type { Snapshot, TeamSnapshots } from './snapshots'
@@ -127,7 +132,7 @@ async function openTeam(projectPath?: string): Promise<{ producer: Connection; t
   return { producer, teamId: details.teamId }
 }
 
-function makeRegistry(): ExternalTeamRegistry {
+function makeRegistry(onChange?: (id: string) => void): ExternalTeamRegistry {
   let n = 0
   return createExternalTeamRegistry({
     dirsFor: (id) => ({
@@ -136,6 +141,7 @@ function makeRegistry(): ExternalTeamRegistry {
     }),
     stateRoot: () => join(dir, 'sessions'),
     now,
+    onChange,
     newId: () => `ext-t${++n}`
   })
 }
@@ -156,6 +162,44 @@ afterEach(() => {
 })
 
 describe('外部团队名册', () => {
+  it('创建、补工程和验收落盘后立即通知列表，无改动和写入失败不通知', async () => {
+    const changed = vi.fn(
+      (id: string) =>
+        JSON.parse(
+          readFileSync(join(dir, 'sessions', `${id}.team`, 'external.json'), 'utf8')
+        ) as ExternalTeamRecord
+    )
+    registry = makeRegistry(changed)
+    const team = await registry.create({ objective: '甲' })
+    expect(changed).toHaveBeenCalledWith(team.id)
+    expect(changed.mock.results[0].value).toMatchObject({ id: team.id, objective: '甲' })
+    await registry.update(team.id, (record) => ({ ...record, projectPath: 'D:/Games/A' }))
+    expect(changed.mock.results[1].value).toMatchObject({ projectPath: 'D:/Games/A' })
+    await registry.recordVerdict(team.id, { kind: 'pass', reason: '玩通了' })
+    expect(changed.mock.results[2].value.state.verdict).toBe('pass')
+    await registry.update(team.id, () => null)
+    await expect(
+      registry.update(team.id, () => {
+        throw new Error('cannot write')
+      })
+    ).rejects.toThrow('cannot write')
+    expect(changed).toHaveBeenCalledTimes(3)
+  })
+
+  it('窗口通知失败不影响已经落盘的团队', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      registry = makeRegistry(() => {
+        throw new Error('window closed')
+      })
+      const team = await registry.create({ objective: '甲' })
+      expect(await registry.get(team.id)).toMatchObject({ objective: '甲' })
+      expect(warning).toHaveBeenCalled()
+    } finally {
+      warning.mockRestore()
+    }
+  })
+
   it('建、读、列；不是 ext- 开头的 id 一律当不存在', async () => {
     const a = await registry.create({ objective: '甲' })
     clock = 2_000

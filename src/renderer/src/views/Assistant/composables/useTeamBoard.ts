@@ -33,6 +33,7 @@ import { message } from '@renderer/utils/messageManager'
 
 export interface UseTeamBoard {
   team: Ref<TeamStateView | null>
+  loading: Ref<boolean>
   /** 队员最近的动态（调了什么工具、说了什么），旧的在前 */
   activity: Ref<TeamActivity[]>
   /** 这条对话是不是工作室 */
@@ -60,12 +61,13 @@ export interface UseTeamBoard {
 const ACTIVITY_KEPT = 80
 
 /**
- * @param teamId 直接给团队 id（「外部团队」页用：外部团队没有盒子里的对话）。给了就不看 chatSid
+ * @param teamId 外部驱动的对话直接给团队 id；它没有盒子内核的 session。给了就不看 chatSid
  */
 export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTeamBoard {
   const chatStore = useChatSessionsStore()
   const { t } = useI18n()
   const team = ref<TeamStateView | null>(null)
+  const loading = ref(false)
   const agentSessionId = computed(
     () => teamId?.value || (chatSid.value ? chatStore.getAgentSessionId(chatSid.value) : '')
   )
@@ -79,8 +81,10 @@ export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTea
     const mine = ++generation
     if (!sessionId) {
       team.value = null
+      loading.value = false
       return
     }
+    loading.value = true
     try {
       const next = await agentV3API.teamState(sessionId)
       if (mine !== generation) return
@@ -91,6 +95,8 @@ export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTea
       if (recent.length && (recent.at(-1)?.at ?? 0) >= newest) activity.value = recent
     } catch {
       // 读不到不是错，只是这一次没读到。保留上一次的值，别让面板闪
+    } finally {
+      if (mine === generation) loading.value = false
     }
   }
 
@@ -113,6 +119,7 @@ export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTea
   watch(
     agentSessionId,
     () => {
+      team.value = null
       activity.value = []
       void refresh()
     },
@@ -120,6 +127,7 @@ export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTea
   )
 
   onUnmounted(() => {
+    generation++
     window.api.off('agent-v3:team-board', boardHandler)
     window.api.off('agent-v3:team-activity', activityHandler)
     window.api.off('agent-v3:released', releasedHandler)
@@ -204,6 +212,7 @@ export function useTeamBoard(chatSid: Ref<string>, teamId?: Ref<string>): UseTea
 
   return {
     team,
+    loading,
     activity,
     active,
     refresh,

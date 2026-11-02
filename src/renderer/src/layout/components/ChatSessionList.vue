@@ -31,7 +31,8 @@ import {
   // 就是字面意义上有一个问题挂在那儿等人回话
   PhQuestion,
   PhSparkle,
-  PhTrash
+  PhTrash,
+  PhUsersThree
 } from '@phosphor-icons/vue'
 import { useI18n } from 'vue-i18n'
 import { useChatSessionsStore, type ChatSession } from '@renderer/store/modules/chatSessions'
@@ -63,6 +64,9 @@ import { listConnectedProjects } from '@renderer/views/Assistant/composables/ueP
 import SidebarSectionHeader from './SidebarSectionHeader.vue'
 import AddProjectModal from './AddProjectModal.vue'
 import type { SidebarProject } from '@renderer/store/modules/chatSidebarStore'
+import { externalTeamChats } from '../composables/externalTeamChats'
+import { useExternalTeamChats } from '../composables/useExternalTeamChats'
+import { externalTeamStatus } from '@renderer/views/Assistant/composables/externalTeamStatus'
 
 interface Props {
   /** 侧边栏是否处于折叠态 */
@@ -117,7 +121,30 @@ function toConnectedRefs(projects: unknown[]): ConnectedProjectRef[] {
 const connectedProjectsRaw = useConnectedProjects()
 const connectedProjects = computed(() => toConnectedRefs(connectedProjectsRaw.value ?? []))
 
-const allSessions = computed<ChatSession[]>(() => chatStore.displayableSessions)
+const { teams: externalTeams } = useExternalTeamChats()
+const externalById = computed(() => new Map(externalTeams.value.map((team) => [team.id, team])))
+const allSessions = computed<ChatSession[]>(() => [
+  ...chatStore.displayableSessions,
+  ...externalTeamChats(externalTeams.value, [
+    ...connectedProjects.value,
+    ...manualProjects.value,
+    ...chatStore.sessions.flatMap((session) => (session.project ? [session.project] : []))
+  ])
+])
+
+function externalTooltip(session: ChatSession): string {
+  const team = externalById.value.get(session.id)
+  if (!team) return session.title
+  return [
+    session.title,
+    t('externalTeams.driven'),
+    t(`externalTeams.status.${externalTeamStatus(team).key}`),
+    t('externalTeams.members', { n: team.members }),
+    team.projectPath
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
 
 const manualProjects = computed<ConnectedProjectRef[]>(() => sidebarStore.manualProjects)
 
@@ -275,11 +302,14 @@ function isProjectConnected(projectName: string): boolean {
  * 折叠的分组里或「显示更多」后面，看着就像侧边栏没反应。
  */
 watch(
-  () => props.activeChatSid,
-  (id) => {
+  [
+    () => props.activeChatSid,
+    () => allSessions.value.some((item) => item.id === props.activeChatSid)
+  ],
+  ([id]) => {
     if (!id || props.collapsed) return
 
-    const session = chatStore.sessionById(id)
+    const session = allSessions.value.find((item) => item.id === id)
     if (!session) return
 
     chatStore.clearTaskDone(id)
@@ -289,6 +319,7 @@ watch(
     // 同名工程按路径拆开后，分组 key 得看整张分组表才知道 —— 先在表里找它
     const owner = groups.value.find((group) => group.sessions.some((item) => item.id === id))
     sidebarStore.expandGroup(owner?.key ?? sessionGroupKey(session, mode))
+    if (owner && projectGroups.value.indexOf(owner) >= PROJECT_LIMIT) showAllProjects.value = true
 
     const position = groups.value
       .flatMap((group) => group.sessions)
@@ -320,7 +351,7 @@ function groupTooltip(group: ChatSessionGroup): string {
   const parts = [group.projectName]
   if (group.engineVersion) parts.push(`UE ${group.engineVersion}`)
   if (group.projectPath) parts.push(group.projectPath)
-  const count = projectGroupSessions(group).filter((session) => !session.archived).length
+  const count = allSessions.value.filter((session) => sessionInProjectGroup(session, group)).length
   parts.push(t('chatSidebar.projectSessionCount', { count }))
   return parts.join('\n')
 }
@@ -528,7 +559,9 @@ const hasSelection = computed<boolean>(() => selectedChatSids.value.length > 0)
 /** 屏幕上实际渲染出来的对话顺序（跨三个区摊平）：Shift 范围就按这条顺序取区间 */
 const visibleChatSids = computed<string[]>(() =>
   sections.value.flatMap((section) =>
-    section.entries.filter((entry) => entry.type === 'session').map((entry) => entry.key)
+    section.entries
+      .filter((entry) => entry.type === 'session' && !externalById.value.has(entry.key))
+      .map((entry) => entry.key)
   )
 )
 
@@ -829,7 +862,7 @@ function getChatInitial(title: string): string {
         :title="
           activityOf(session) === 'waiting'
             ? `${session.title} — ${t('chatSidebar.awaitingAnswer')}`
-            : session.title
+            : externalTooltip(session)
         "
       >
         <button
@@ -1006,7 +1039,11 @@ function getChatInitial(title: string): string {
                     </AppMenuItem>
                     <!-- 改名是按名字改整批对话的戳，拆开的同名组改不准，不给 -->
                     <AppMenuItem
-                      v-if="!entry.group.split"
+                      v-if="
+                        !entry.group.split &&
+                        (projectGroupSessions(entry.group).length > 0 ||
+                          sidebarStore.isManualProject(entry.group.projectName))
+                      "
                       :key="`project-rename-${entry.group.key}`"
                       :item-key="`project-rename-${entry.group.key}`"
                       @click="openProjectRename(entry.group)"
@@ -1033,7 +1070,7 @@ function getChatInitial(title: string): string {
                         </span>
                       </AppMenuItem>
                     </template>
-                    <template v-if="entry.group.sessions.length > 0">
+                    <template v-if="projectGroupSessions(entry.group).length > 0">
                       <AppMenuDivider />
                       <AppMenuItem
                         :key="`project-archive-${entry.group.key}`"
@@ -1050,6 +1087,10 @@ function getChatInitial(title: string): string {
                     </template>
                     <AppMenuDivider />
                     <AppMenuItem
+                      v-if="
+                        !entry.group.split ||
+                        !entry.group.sessions.some((session) => externalById.has(session.id))
+                      "
                       :key="`project-remove-${entry.group.key}`"
                       :item-key="`project-remove-${entry.group.key}`"
                       danger
@@ -1084,6 +1125,20 @@ function getChatInitial(title: string): string {
               </AppButton>
             </span>
           </div>
+
+          <!-- 外部驱动的对话使用同一列表与路由，管理动作仍由团队任务板提供。 -->
+          <button
+            v-else-if="externalById.has(entry.session.id)"
+            type="button"
+            class="chat-item chat-item-external"
+            :class="{ active: entry.session.id === props.activeChatSid, indent: entry.indent }"
+            :title="externalTooltip(entry.session)"
+            :aria-current="entry.session.id === props.activeChatSid ? 'true' : undefined"
+            @click="openChat(entry.session.id)"
+          >
+            <span class="chat-item-title">{{ entry.session.title }}</span>
+            <PhUsersThree class="chat-item-external-icon" :aria-label="t('externalTeams.driven')" />
+          </button>
 
           <!-- 一条对话：行尾是置顶和归档，其余操作走右键；
                Ctrl/Cmd+点击逐个多选、Shift+点击拉范围，双击在多选中打开 -->
@@ -1609,6 +1664,19 @@ function getChatInitial(title: string): string {
 // 「等你回答」压过转圈和蓝点（见 sessionActivityState）。
 // 它是这三个里唯一**要人动手**的状态，所以给足对比度并轻轻呼吸一下 ——
 // 其余两个都是「你看看就行」，安安静静待着才对。
+.chat-item-external {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+
+.chat-item-external-icon {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
 .chat-item-waiting {
   flex: none;
   font-size: 12px;
