@@ -498,11 +498,11 @@ describe('混合团队的制作人连接', () => {
 describe('制作人须知', () => {
   const input = { objective: '做一个塔防 <游戏> & "x"', workspaceDir: 'C:\\ws\\team' }
 
-  it('盒子里那一份一个字节都没变（改混合版之前量下的指纹）', () => {
+  it('盒子里那一份一个字节都没变（制作人放开写工具后量下的指纹）', () => {
     const brief = buildProducerBrief(input)
-    expect(brief.length).toBe(4338)
+    expect(brief.length).toBe(4241)
     expect(createHash('sha256').update(brief).digest('hex')).toBe(
-      '7b085343537acf2e6098b16a54981c698871c5ef3791df3cc77276a9c7975f36'
+      '4ac2c07e40344d6656e392c70b0b7001ea39843b0dbda76df677d30cddcebb2e'
     )
   })
 

@@ -173,13 +173,17 @@ describe('工作室模式装配', () => {
     expect(agent.state.errorMessage).toBeUndefined()
 
     // 制作人：四个团队工具在手，系统提示词里有交付标准和工作区；
-    // 只协调不动手，写工具和 `task` 都收走（producerTools）
+    // 制作人可以自己动手：写工具留着
     const producer = requests[0]!
     expect(producer.tools).toEqual(
-      expect.arrayContaining(['team_hire', 'team_send', 'team_board', 'team_deliver'])
+      expect.arrayContaining([
+        'team_hire',
+        'team_send',
+        'team_board',
+        'team_deliver',
+        'write_state'
+      ])
     )
-    expect(producer.tools).not.toContain('task')
-    expect(producer.tools).not.toContain('write_state')
     expect(producer.system).toContain('<team_mode>')
     expect(producer.system).toContain(join(root, 's1', 'ws'))
 

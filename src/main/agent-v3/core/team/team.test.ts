@@ -903,8 +903,8 @@ describe('提示词只写环境，不写方法论', () => {
     expect(brief).not.toMatch(/art director|level designer|designer|programmer|美术|策划|程序/i)
   })
 
-  /** 2026-10-16：制作人一个人没招、自己把游戏写完。写工具收走，活只能派出去 */
-  it('制作人只留只读工具和建工程、绑工程', () => {
+  /** `producerTools` 现在只给外部团队的制作人用；盒子里的制作人工具齐全 */
+  it('外部团队的制作人只留只读工具和建工程、绑工程', () => {
     const tool = (
       name: string,
       risk: 'safe' | 'mutating' | 'destructive'
@@ -925,9 +925,12 @@ describe('提示词只写环境，不写方法论', () => {
       'project_manage',
       'set_session_project'
     ])
-    const brief = buildProducerBrief({ objective: 'x', workspaceDir: 'w' })
-    expect(brief).toMatch(/You coordinate; teammates build/)
-    expect(brief).not.toMatch(/better done alone/)
+    expect(buildProducerBrief({ objective: 'x', workspaceDir: 'w' })).toMatch(
+      /build the game yourself/
+    )
+    expect(
+      buildProducerBrief({ objective: 'x', workspaceDir: 'w', hybrid: { teamId: 't' } })
+    ).toMatch(/You coordinate; teammates build/)
   })
 
   it('制作人的 project_manage 只能建工程、开工程，改游戏的动作被挡下', async () => {

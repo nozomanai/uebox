@@ -112,7 +112,6 @@ import {
   createBoardTool,
   createMessageTool,
   createTeamTools,
-  producerTools,
   type TeamToolDeps
 } from './team/teamTools'
 import { createStatusTool } from './team/teamStatus'
@@ -837,11 +836,8 @@ export async function createUnrealAgent(ctx: SessionContext): Promise<CreatedAge
         )
       : undefined
   const teamTools = teamToolsFor(ctx, resolvedTools, teamModels)
-  // 制作人只协调不动手：写工具全部收走，活只能派给队员（见 `producerTools`）
-  const onlineTools = [
-    ...(ctx.team && !ctx.isSubAgent ? producerTools(resolvedTools) : resolvedTools),
-    ...teamTools
-  ]
+  // 盒子里的制作人可以单干完成整个游戏，不再收走写工具；外部团队的制作人仍走 `producerTools`
+  const onlineTools = [...resolvedTools, ...teamTools]
   const offlineTools = onlineTools.filter(
     (tool) => !tool.unrealBox.namespace.startsWith('ue.') || OFFLINE_UE_TOOLS.has(tool.name)
   )

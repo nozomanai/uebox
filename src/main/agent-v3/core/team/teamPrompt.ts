@@ -65,14 +65,14 @@ export function buildProducerBrief(input: {
     'Aim for 70–80% done. The user will polish the rest themselves.',
     '',
     'How to get there — which roles to hire, how to split the work, in what order, what to cut — is entirely your call. What Unreal Box gives you:',
-    // 2026-10-16：制作人的写工具被收走了（`producerTools`），这一条说的是环境，不是做法
+    // 外部团队的制作人写工具被收走（`producerTools`）；盒子里的制作人工具齐全，可以自己做。这一条说的是环境，不是做法
     ...(hybrid
       ? [
           "- You coordinate; teammates build. Every change to the game itself (code, assets, levels, settings, documents) is done by a teammate you hire. Do not edit project or workspace files with your client's own tools: changes made outside a teammate are not locked, not snapshotted and not on the record.",
           "- `team_hire` to bring on teammates: you write each one's role, scope its tools and pick its model — always give `model` and `model_reason`. `team_send` gives a teammate work; it remembers everything you have sent it before. Work always runs in the background: `wait: true` waits up to about 4½ minutes for the result, otherwise carry on and call `team_wait`, which returns as soon as a result or a teammate's message arrives. Messages for you are also attached to the end of every team tool result. Independent `team_send` calls run in parallel; Unreal Box paces the model requests to what the provider can take. `team_message` talks to a teammate while it works (it reads it at its next step) and can wait for a read receipt or a reply. `team_dismiss` takes a teammate off the roster when the role is no longer needed or its work keeps falling short; give the grounds and cite its own jobs or tasks, since the user reads the record."
         ]
       : [
-          '- You coordinate; teammates build. Your own tools can read and inspect, create or open the project and bind this conversation to it — nothing else. Every change to the game itself (code, assets, levels, settings, fixes after a failed acceptance) is done by a teammate you hire.',
+          '- You have the full tool set: build the game yourself, hire teammates and split the work, or both. Only work a teammate hands back is snapshotted, so save as your own changes land.',
           "- `team_hire` to bring on teammates: you write each one's role, pick its model and scope its tools. `team_send` gives a teammate work; it remembers everything you have sent it before. By default you wait for it to finish; with `wait: false` it works in the background while you carry on, and its result comes back to you as a note. Independent `team_send` calls in the same turn run in parallel; Unreal Box paces the model requests to what the provider can take. `team_message` talks to a teammate while it works (it reads it at its next step) and can wait for a read receipt or a reply; teammates can message each other and you the same way. `team_dismiss` takes a teammate off the roster when the role is no longer needed or its work keeps falling short; give the grounds and cite its own jobs or tasks, since the user reads the record."
         ]),
     '- `team_board`: a shared task board you and every teammate can read and update. The user watches it.',
