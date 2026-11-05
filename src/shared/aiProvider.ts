@@ -78,6 +78,16 @@ export type ImageApi =
    */
   | 'uebox-images'
   /**
+   * MiniMax：端点是 `POST /v1/image_generation`，**不是 `/images/generations`**，
+   * 请求体里张数虽然也叫 `n`，尺寸却只有 `aspect_ratio` 八档或 `width`/`height`
+   * （512–2048、8 的倍数、必须成对给，且 `aspect_ratio` 优先）。参考图放
+   * `subject_reference`，一次只收一张、只认 `type: "character"`（保人物一致，
+   * 不是通用重绘）。失败走 **HTTP 200 + `base_resp.status_code`**，不是 4xx。
+   *
+   * @see https://platform.minimax.io/docs/api-reference/image-generation-t2i
+   */
+  | 'minimax-images'
+  /**
    * ChatGPT 订阅的 Codex 后端（`openai-codex-responses` 协议）。没有 `/images/*` 端点：
    * 出图是 Responses 里的 `image_generation` 工具，强制调用一次、从事件流里取图。
    * 模型 id 是**驱动工具的那个对话模型**，画图的模型由后端定。一次请求一张。

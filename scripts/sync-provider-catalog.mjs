@@ -58,6 +58,7 @@ const LOGO_ALIAS = {
   'siliconflow-image': 'siliconflow',
   'zhipuai-image': 'zhipuai',
   'togetherai-image': 'togetherai',
+  'minimax-image': 'minimax',
 
   // 网页检索里的 Jina 也是同一家的另一个入口
   'jina-search': 'jina',
@@ -182,6 +183,7 @@ const KEY_PAGE = {
   'siliconflow-image': 'https://cloud.siliconflow.cn/account/ak',
   'zhipuai-image': 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys',
   'togetherai-image': 'https://api.together.xyz/settings/api-keys',
+  'minimax-image': 'https://platform.minimaxi.com/user-center/basic-information/interface-key',
 
   // ── 向量化（同名厂商共用控制台）──
   jina: 'https://jina.ai/api-dashboard/key-manager',
@@ -412,6 +414,15 @@ export const CURATED = [
     group: 'image',
     baseUrl: 'https://api.together.xyz/v1',
     displayName: 'Together AI（FLUX）'
+  },
+  {
+    id: 'minimax-image',
+    group: 'image',
+    // 与「MiniMax 海螺视频」同一把密钥，但**是两条记录**，而且连 Base URL 都不同 ——
+    // 视频在 /v2，图片在 /v1。国内站是 minimaxi.com，国际站是 minimax.io，
+    // 两边的 Key 不通用；默认给国内站，用海外账号的用户自己改地址
+    baseUrl: 'https://api.minimaxi.com/v1',
+    displayName: 'MiniMax 海螺生图'
   },
 
   // ── 向量化 ──
@@ -1566,6 +1577,22 @@ const MANUAL_ENTRIES = {
         'siliconflow-images'
       ),
       'Kwai-Kolors/Kolors': imageModel('Kwai-Kolors/Kolors', 'Kolors 可图', 'siliconflow-images')
+    }
+  },
+  'minimax-image': {
+    name: 'MiniMax 海螺生图',
+    env: ['MINIMAX_API_KEY'],
+    doc: 'https://platform.minimax.io/docs/api-reference/image-generation-t2i',
+    // 端点是 /image_generation，不是 /images/generations，所以走 minimax-images。
+    // 官方只有这两个 id（2026-11 核对），`MiniMax-Image-01` 这种写法是聚合平台的命名，
+    // 打官方域名会被打回。live 那一档不认 width/height，只能用比例档
+    models: {
+      'image-01': imageModel('image-01', 'Image-01', 'minimax-images'),
+      'image-01-live': imageModel(
+        'image-01-live',
+        'Image-01 Live（插画风，仅比例档）',
+        'minimax-images'
+      )
     }
   },
   'zhipuai-image': {

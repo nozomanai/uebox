@@ -207,6 +207,7 @@ const IMAGE_APIS: readonly ImageApi[] = [
   'siliconflow-images',
   'ark-images',
   'gemini-images',
+  'minimax-images',
   'uebox-images',
   'codex-images'
 ]

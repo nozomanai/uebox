@@ -1387,6 +1387,30 @@ export const GENERATED_CATALOG: readonly CatalogEntry[] = Object.freeze([
     ]
   },
   {
+    "id": "minimax-image",
+    "displayName": "MiniMax 海螺生图",
+    "group": "image",
+    "kind": "image",
+    "protocol": "openai-completions",
+    "baseUrl": "https://api.minimaxi.com/v1",
+    "apiKeyUrl": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+    "requiresApiKey": true,
+    "defaultEnvVar": "MINIMAX_API_KEY",
+    "hasLogo": true,
+    "models": [
+      {
+        "id": "image-01",
+        "displayName": "Image-01",
+        "imageApi": "minimax-images"
+      },
+      {
+        "id": "image-01-live",
+        "displayName": "Image-01 Live（插画风，仅比例档）",
+        "imageApi": "minimax-images"
+      }
+    ]
+  },
+  {
     "id": "ollama-embedding",
     "displayName": "Ollama（本机向量化）",
     "group": "embedding",

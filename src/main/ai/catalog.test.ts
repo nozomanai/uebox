@@ -396,6 +396,7 @@ describe('图片生成分组', () => {
       'siliconflow-images',
       'ark-images',
       'gemini-images',
+      'minimax-images',
       'codex-images'
     ]
     const bad: string[] = []
