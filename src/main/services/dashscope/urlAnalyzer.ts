@@ -11,7 +11,7 @@
 
 import { URL } from 'url'
 import { analyzeVideoUrl } from './videoAnalyzer'
-import { analyzeImageUrl } from './imageAnalyzer'
+import { analyzeImageUrl, BAILIAN_KEY_MISSING_ERROR } from './imageAnalyzer'
 import { resolveProviderApiKey } from '../../ai/providerKey'
 
 /** 内置目录里阿里云百炼的 provider id */
@@ -147,19 +147,19 @@ export function isFileUrl(url: string): boolean {
 }
 
 /**
- * 视觉理解缺 Key 时的提示。写明去哪申请、填到哪 —— 原先那句是
- * 「请在 .env 文件中设置 QWEN_API_KEY」，打包版用户没有 .env 可改。
+ * 视觉理解缺 Key 时的提示。
+ *
+ * 和 `imageAnalyzer` 说的是同一件事（同一个目录、同一个条件），原先两处各写了一套
+ * 措辞。正文现在只有一份，在 `imageAnalyzer.BAILIAN_KEY_MISSING_ERROR`。
  */
-export const VISION_KEY_HINT =
-  '识别图片和视频需要阿里云百炼的 API Key。到 https://bailian.console.aliyun.com 申请，' +
-  '在 设置 → 模型 里填进「阿里云百炼（通义千问）」这个服务商。'
+export const VISION_KEY_HINT = BAILIAN_KEY_MISSING_ERROR
 
 /**
  * 分析 URL 内容（根据类型路由到不同的处理器）。
  *
- * **凡是拿得到直链的视频都走这里**，不管它来自哪个站：B 站在
- * `ipc/bilibili.ts` 里用 cheerio 解析出真实播放地址之后，剩下的就是普通的
- * 视频 URL 理解，没有任何 B 站独有的东西。别在调用方各写一份。
+ * **远端视频一律由 `videoAnalysis/videoSourceAnalysis.ts` 下到本地再发，别把直链
+ * 交给 `analyzeUrl`。** B 站 CDN 靠 Referer 挡站外访问，模型厂商那边发不出这个头，
+ * 拿到的一律是 403。这里只收本来就能直接给出去的地址。
  *
  * @param url - 要分析的 URL
  * @param prompt - 自定义提示词，不给就用分析器各自的默认值
@@ -175,8 +175,10 @@ export async function analyzeUrl(url: string, prompt?: string): Promise<UrlAnaly
       // 图片与视频打的是百炼同一个端点，Key 在这里解析一次往下传。
       //
       // 不让两个分析器各自去读：它们原先各读一次 `process.env.QWEN_API_KEY`，
-      // 打包版里那个变量不存在，于是视觉理解永远缺 Key。
-      const apiKey = await resolveProviderApiKey(ALIBABA_PROVIDER_ID, 'QWEN_API_KEY')
+      // 打包版里那个变量不存在，于是视觉理解永远缺 Key。开发环境的兜底变量名
+      // 跟着 `.env.example` 走，是 `DASHSCOPE_API_KEY` —— `QWEN_API_KEY`
+      // 本仓库任何文档里都没有。
+      const apiKey = await resolveProviderApiKey(ALIBABA_PROVIDER_ID, 'DASHSCOPE_API_KEY')
       if (!apiKey) {
         return { success: false, error: VISION_KEY_HINT, url, urlType }
       }

@@ -5,7 +5,16 @@ import AppMenuItem from '@renderer/components/AppMenuItem.vue'
 import AppModal from '@renderer/components/AppModal.vue'
 import AppCheckbox from '@renderer/components/AppCheckbox.vue'
 import AppButton from '@renderer/components/AppButton.vue'
-import { computed, inject, type Component, ref, onMounted, onUnmounted, onActivated } from 'vue'
+import {
+  computed,
+  inject,
+  type Component,
+  ref,
+  watch,
+  onMounted,
+  onUnmounted,
+  onActivated
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { message } from '@renderer/utils/messageManager'
 import {
@@ -111,6 +120,46 @@ const nbStore = useNotebookStore()
  * 一并移除，而缓存中的面板不会重新挂载，移除后就再也收不到事件。
  */
 let offSourceChanged: (() => void) | null = null
+
+/**
+ * B 站视频分析的进度，按来源 URL 存。
+ *
+ * 不写进 store：这是一次调用期间的临时状态，而 store 里的来源会落库。
+ * 整条链要解析链接、下载、可能压一遍、再等模型，最坏好几分钟 ——
+ * 不显示的话这段时间侧栏只有一行「Bilibili」在转圈。
+ */
+const analyzeNotes = ref<Record<string, string>>({})
+let offAnalyzeProgress: (() => void) | null = null
+
+/** 来源正在加载时那一行要显示的字：有进度就报进度，没有就报类型 */
+const getSourceLoadingLabel = (source: SourceItem): string => {
+  const note = source.sourceUrl ? analyzeNotes.value[source.sourceUrl] : ''
+  return note || getSourceTypeLabel(source)
+}
+
+/**
+ * 一条来源重新转起来，就先把上一轮留下的进度句丢掉。
+ *
+ * 缓存按 URL 存，而重试用的是同一条 URL。不丢的话用户点重试，这一行会先亮出
+ * 上次失败前停住的「正在让 X 看这段视频…」，要等几秒后新的进度才盖掉它 ——
+ * 那几秒里侧栏报的是上一轮的状态。
+ */
+watch(
+  () =>
+    props.sources
+      .filter((source) => source.loading && source.sourceUrl)
+      .map((source) => source.sourceUrl as string),
+  (loadingUrls, previousUrls) => {
+    const alreadyLoading = new Set(previousUrls ?? [])
+    const started = loadingUrls.filter((url) => !alreadyLoading.has(url) && analyzeNotes.value[url])
+    if (started.length === 0) return
+
+    const next = { ...analyzeNotes.value }
+    for (const url of started) delete next[url]
+    analyzeNotes.value = next
+  }
+)
+
 onMounted(() => {
   offSourceChanged = window.electron.ipcRenderer.on(
     'agent:notebook:source-changed',
@@ -119,11 +168,16 @@ onMounted(() => {
       await nbStore.loadSources(props.notebookId)
     }
   )
+  offAnalyzeProgress = window.api.bilibili.onAnalyzeProgress(({ url, note }) => {
+    analyzeNotes.value = { ...analyzeNotes.value, [url]: note }
+  })
 })
 
 onUnmounted(() => {
   offSourceChanged?.()
   offSourceChanged = null
+  offAnalyzeProgress?.()
+  offAnalyzeProgress = null
 })
 
 /**
@@ -727,10 +781,15 @@ const handleDrop = async (e: DragEvent): Promise<void> => {
           <div class="source-info">
             <div class="source-title">{{ source.title || t('notebook.source.loading') }}</div>
             <div class="source-meta">
-              <span v-if="source.loading" class="loading-meta">{{
-                getSourceTypeLabel(source)
+              <span
+                v-if="source.loading"
+                class="loading-meta"
+                :title="getSourceLoadingLabel(source)"
+                >{{ getSourceLoadingLabel(source) }}</span
+              >
+              <span v-else-if="source.error" class="error-text" :title="source.error">{{
+                source.error
               }}</span>
-              <span v-else-if="source.error" class="error-text">{{ source.error }}</span>
               <span v-else>{{ getSourceTypeLabel(source) }}</span>
               <span
                 v-if="getSourceIndexStatus(source)"
@@ -1130,6 +1189,19 @@ const handleDrop = async (e: DragEvent): Promise<void> => {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+
+        // 失败原因是一整句「去哪配」的指路，一行省略号正好把路切掉。
+        // 放到三行，完整那句挂在 title 上。
+        // `overflow: hidden` 写在自己这条：line-clamp 要靠它才会裁，
+        // 指望上面那条 `> span:first-child` 带过来的话，`.source-meta` 里哪天插进
+        // 一个前置 span，截断就静默失效
+        > span.error-text {
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 3;
+          white-space: normal;
+          overflow: hidden;
         }
 
         .index-status {

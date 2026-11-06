@@ -10,14 +10,22 @@
  * 名字刻意是通用的：材质库的第三列是「混合 · 着色」，蓝图库是「引擎版本」，
  * 叫 col-engine 会让另一边读起来莫名其妙。
  */
-defineProps<{
-  /** 表头文案，按上面的列顺序给 5 个（第 6 列是操作，不用标题） */
-  columns: readonly string[]
-  /** 一行都没有时显示的文案 */
-  emptyText: string
-  /** 是否一行都没有 */
-  isEmpty: boolean
-}>()
+withDefaults(
+  defineProps<{
+    /** 表头文案，按上面的列顺序给 5 个（第 6 列是操作，不用标题） */
+    columns: readonly string[]
+    /**
+     * 一行都没有时显示在表格里的文案。
+     *
+     * 自带空态的调用方（LibraryBrowser 在表格外面画 LibraryEmptyState）不传这两个 ——
+     * 它根本不会把一张空表渲染出来。
+     */
+    emptyText?: string
+    /** 是否一行都没有 */
+    isEmpty?: boolean
+  }>(),
+  { emptyText: '', isEmpty: false }
+)
 </script>
 
 <template>

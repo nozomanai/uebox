@@ -7,11 +7,80 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import type {
   CustomRule,
   CustomRuleMatch,
-  NamingRulesConfig
+  NamingConvention,
+  NamingRulesConfig,
+  TextureSuffixPattern
 } from '../../renderer/src/types/namingRules'
 import { DEFAULT_NAMING_RULES_CONFIG } from '../../renderer/src/types/namingRules'
 
 const CONFIG_FILE_NAME = 'naming-rules.json'
+
+/**
+ * 以出厂表垫底的那四张映射表。
+ *
+ * `libraryAssetTypeToDirectory` 在列表里，但设置页**没有**它的编辑入口
+ * （理由见 ProfileNamingRules.vue 里那段注释），所以现在不可能产生它的删除。
+ * 以后给它加编辑器的话注意：`projectImport.ts` 查这张表的兜底是空串
+ * （`libraryAssetTypeToDirectory[assetType] || ''`），删掉一行会让 `destinationPath`
+ * 变成空路径。加编辑器的同时要先把那个兜底补成一个合理目录。
+ */
+const MAP_FIELDS = [
+  'assetPrefixes',
+  'assetTypeToDirectory',
+  'libraryAssetTypeToDirectory',
+  'extensionToAssetType'
+] as const
+
+type MapField = (typeof MAP_FIELDS)[number]
+
+/** 用户在设置页点了删除的出厂键，按表分组 */
+export type RemovedNamingKeys = Partial<Record<MapField, string[]>>
+
+/**
+ * 保存时交上来的东西：完整配置 + 这一次点掉了哪些键。
+ *
+ * **删除是显式报上来的，不是从表里缺了哪个键倒推出来的。** 倒推分不出
+ * 「他点了删除」和「他正在把 `A_` 改成 `SFX_`、这一刻输入框是空的」——
+ * 后者在自动保存下会被当成删除永久落盘，而那是取不回来的（只能「恢复默认」，
+ * 代价是抹掉他其他所有自定义）。
+ *
+ * `removedKeys` 顺着配置对象一起过 IPC，不另加一个参数：preload 的桥
+ * （`window.api.namingRules.saveConfig`）只收一个值。
+ */
+export type NamingRulesSavePayload = NamingRulesConfig & { removedKeys?: RemovedNamingKeys }
+
+/**
+ * 配置文件的格式版本。**没有这个字段的是 2026-11 以前的全量快照**，
+ * 读的时候由 `migrateFullSnapshot` 翻成稀疏形状，见那个函数上面那段。
+ */
+const STORED_SCHEMA = 2
+
+/**
+ * 落盘的形状 —— 和交给调用方的 `NamingRulesConfig` **不是同一个东西**。
+ *
+ * 四张映射表存的是**稀疏覆盖**：只有用户改过的键（值和出厂不同）和他自己加的键在里面。
+ * 他删掉的出厂键记进 `removed`。读取时 `mergeWithDefaults` 按
+ * 「铺出厂默认 → 剔掉 removed → 叠上覆盖」把它还原成一张完整的表，
+ * 所以消费方（导入落盘、整理审计）拿到的仍旧是原来那个完整结构。
+ *
+ * 这么分开有两件事同时成立，而原来的全量快照只能二选一：
+ *
+ *   - **删得掉。** 用户在设置页删掉 `SoundWave` 那一行，下次读盘它不会被出厂值垫回来，
+ *     导入时 `assetPrefixes['SoundWave']` 真的查不到，文件就不带前缀落盘。
+ *   - **后续版本新增的条目仍然到得了老用户。** 没被改过、没被删掉的键压根不在文件里，
+ *     所以我们之后新增 `usdz → StaticMesh`、改掉某个出厂前缀，他下次启动就拿到了。
+ */
+interface StoredNamingRules extends Partial<Record<MapField, Record<string, string>>> {
+  schema?: number
+  version?: string
+  /** 用户删掉的出厂键，按表分组 */
+  removed?: RemovedNamingKeys
+  textureSuffixPatterns?: TextureSuffixPattern[]
+  namingConvention?: NamingConvention
+  autoAddPrefix?: boolean
+  autoDetectTextureType?: boolean
+  customRules?: CustomRule[]
+}
 
 /**
  * 获取配置文件路径。
@@ -26,36 +95,140 @@ function getConfigPath(): string | null {
 }
 
 /**
- * 读取配置文件
+ * 读盘并翻成稀疏形状。
+ *
+ * 三条回落路径都交出 `{}`（= 纯出厂值）：拿不到 userData、文件还不存在、文件坏了。
+ * 前两条恰恰是最容易被忽略的，而 agent 侧每次 resolveUserNamingPolicy
+ * 在 app ready 之前都走这里。
  */
-export function loadNamingRulesConfig(): NamingRulesConfig {
+function readStoredConfig(): StoredNamingRules {
   const configPath = getConfigPath()
-  // 走 mergeWithDefaults({}) 而不是 `{ ...DEFAULT }`：展开是**浅**拷贝，那四张嵌套的表
-  // 会按引用交出去，谁改一下加载回来的 config 就污染了整个进程的出厂值。
-  // 这两条回落路径（拿不到 userData、读盘失败）恰恰是最容易被忽略的，
-  // 而 agent 侧每次 resolveUserNamingPolicy 在 app ready 之前都走这里
-  if (!configPath) return mergeWithDefaults({})
+  if (!configPath) return {}
 
   try {
     if (existsSync(configPath)) {
-      const content = readFileSync(configPath, 'utf-8')
-      const config = JSON.parse(content) as NamingRulesConfig
-
-      // 验证配置结构，如果缺少字段则使用默认值补充
-      return mergeWithDefaults(config)
+      const parsed = JSON.parse(readFileSync(configPath, 'utf-8')) as StoredNamingRules | null
+      if (!parsed || typeof parsed !== 'object') return {}
+      return parsed.schema === STORED_SCHEMA ? parsed : migrateFullSnapshot(parsed)
     }
   } catch (error) {
     console.error('[NamingRulesConfig] 读取配置文件失败:', error)
   }
 
-  // 如果文件不存在或读取失败，返回默认配置（同上，必须是深拷贝）
-  return mergeWithDefaults({})
+  return {}
+}
+
+/**
+ * 老格式（全量快照）翻成稀疏覆盖。
+ *
+ * 快照里和出厂值不同的键、以及出厂表里没有的键，都是用户自己的东西，原样搬进覆盖 ——
+ * **升级不丢他的自定义规则**。
+ *
+ * `removed` 留空是故意的：老格式里「某个出厂键不在快照里」有两种可能 ——
+ * 他删过（老代码当场垫回来了，他看到的也是垫回来的样子），或者那个键是我们后来才加的、
+ * 他那份快照拍得早。分不出来的东西不猜，所以迁移这一刻**一条删除都不记**，
+ * 他看到的表和升级前完全一样。想删的那一行再点一次删除，这回是真的。
+ */
+function migrateFullSnapshot(legacy: StoredNamingRules): StoredNamingRules {
+  const migrated: StoredNamingRules = { ...legacy, schema: STORED_SCHEMA, removed: {} }
+
+  for (const field of MAP_FIELDS) {
+    const snapshot = legacy[field]
+    if (!snapshot || typeof snapshot !== 'object') {
+      delete migrated[field]
+      continue
+    }
+    migrated[field] = overlayOf(field, snapshot)
+  }
+
+  return migrated
+}
+
+/** 一张完整的表里，哪些键是用户改过或自己加的 */
+function overlayOf(field: MapField, table: Record<string, string>): Record<string, string> {
+  const factory: Record<string, string> = DEFAULT_NAMING_RULES_CONFIG[field]
+  const overlay: Record<string, string> = {}
+  for (const [key, value] of Object.entries(table)) {
+    if (factory[key] !== value) overlay[key] = value
+  }
+  return overlay
+}
+
+/**
+ * 上次存的覆盖里，这次该继续往下带的那些键。
+ *
+ * **覆盖是「继承 + 叠加」，不是整份替换。** 这次交上来的表里没有的键分两种，
+ * 语义和出厂键那边完全对称：
+ *
+ * - **显式报了删除**：不往下继承。出厂键另外记进 `removed`；用户自己加的键
+ *   不进覆盖就等于没了，不需要删除列表。
+ * - **只是这一刻没值**（输入框清空了、这一行还没填完）：照搬上次存的那个值。
+ *
+ * 不继承的后果是真的丢数据：用户自己加的 `SkeletalMeshLOD → SKM_` 想改成 `LOD_`，
+ * 全选删除之后停顿两秒就自动保存了一次，这一行不在表里 —— 覆盖整份重算，这个键
+ * 落盘之后再也回不来，连「恢复默认」都救不回（出厂表里压根没有它）。出厂键上的
+ * 覆盖值同理：`SoundWave: SFX_` 清空一下就静默退回出厂的 `A_`。
+ */
+function inheritedOverlay(
+  previousOverlay: Record<string, string> | undefined,
+  incoming: Record<string, string>,
+  justRemoved: string[] | undefined
+): Record<string, string> {
+  if (!previousOverlay) return {}
+  const removed = new Set((justRemoved ?? []).filter((key) => typeof key === 'string'))
+  const kept: Record<string, string> = {}
+  for (const [key, value] of Object.entries(previousOverlay)) {
+    // 「这张表里还在的键一定没被删掉」—— 和 removedFor 第二道过滤同一条规则，
+    // 所以「删掉又填回来」在两条路上都自己解开
+    if (key in incoming || removed.has(key)) continue
+    kept[key] = value
+  }
+  return kept
+}
+
+/**
+ * 这张表的删除列表：盘上已经记着的，加上这次点掉的。
+ *
+ * 两道过滤：
+ *
+ * - **只记出厂键。** 用户自己加的键不进覆盖就等于没了，不需要删除列表。
+ * - **这张表里还在的键一定没被删掉。** 「删掉又填回来」靠这一条自己解开 ——
+ *   哪怕他填回去的值和出厂一样（于是覆盖里没有这个键），行也会回来。
+ */
+function removedFor(
+  field: MapField,
+  stored: string[] | undefined,
+  justRemoved: string[] | undefined,
+  table: Record<string, string>
+): string[] {
+  const factory: Record<string, string> = DEFAULT_NAMING_RULES_CONFIG[field]
+  const keys = new Set<string>()
+  for (const list of [stored, justRemoved]) {
+    if (!Array.isArray(list)) continue
+    for (const key of list) {
+      if (typeof key !== 'string') continue
+      if (key in factory && !(key in table)) keys.add(key)
+    }
+  }
+  return [...keys]
+}
+
+/**
+ * 读取配置
+ */
+export function loadNamingRulesConfig(): NamingRulesConfig {
+  return mergeWithDefaults(readStoredConfig())
 }
 
 /**
  * 保存配置文件
  */
-export function saveNamingRulesConfig(config: NamingRulesConfig): boolean {
+export function saveNamingRulesConfig(config: NamingRulesSavePayload): boolean {
+  return writeStored(toStored(config))
+}
+
+/** 落盘。目录不存在就建出来 */
+function writeStored(stored: StoredNamingRules): boolean {
   const configPath = getConfigPath()
   if (!configPath) {
     console.error('[NamingRulesConfig] 拿不到用户数据目录，这次没保存')
@@ -63,16 +236,12 @@ export function saveNamingRulesConfig(config: NamingRulesConfig): boolean {
   }
 
   try {
-    // 确保目录存在
     const dir = dirname(configPath)
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })
     }
 
-    // 写盘也过一遍 mergeWithDefaults：读写两侧用同一套规则，存进去的东西和下次
-    // 读出来的东西才一致。为什么不改成「存原样」见 mergeWithDefaults 上面那段
-    const validatedConfig = mergeWithDefaults(config)
-    writeFileSync(configPath, JSON.stringify(validatedConfig, null, 2), 'utf-8')
+    writeFileSync(configPath, JSON.stringify(stored, null, 2), 'utf-8')
     return true
   } catch (error) {
     console.error('[NamingRulesConfig] 保存配置文件失败:', error)
@@ -81,53 +250,25 @@ export function saveNamingRulesConfig(config: NamingRulesConfig): boolean {
 }
 
 /**
- * 合并配置与默认值，确保所有必需字段都存在。
+ * 完整配置拆成落盘的稀疏形状。
  *
- * **四张映射表逐条合并，出厂值垫底。** 这样后续版本新增的条目（新扩展名、新类型）
- * 才能到达老用户手里。
+ * 表里缺了某个键只说明「这一刻没值」（输入框清空了、这一行还没填完），不说明他删了它。
+ * 所以缺键在两处都按「没碰过」处理：
  *
- * 上一轮试过「整张要么用文件的、要么用出厂的」，想让用户删掉的那一行真的留在删掉的
- * 状态。结果是把问题搬了个家，没解决：设置页任何一次自动保存都会把**整个** config
- * 原样写回（`syncEditingToConfig` 是从合并后的编辑行重建的），「恢复默认」更是直接把
- * 出厂表整张写进文件。于是用户随便改一个开关，四张表就被钉在**那个版本**的快照上：
- *
- *   - 之后我们新增 `usdz → StaticMesh`，他永远收不到，导进来的文件没前缀、落进
- *     /Game/Imported，而页面上看不出为什么 —— `extensionToAssetType` 和
- *     `libraryAssetTypeToDirectory` 连编辑器都没有，除了「恢复默认」无从修补；
- *   - 之后我们改掉某个出厂前缀，`pickCustomized` 会把他那份陈旧快照当成「他自己定的」
- *     推给插件 —— 正是那个模块存在的目的所要防的事。
- *
- * 另外 `??` 那种写法会把模块级的 `DEFAULT_NAMING_RULES_CONFIG.xxx` **按引用**交出去
- * （原先的展开是新对象），谁改一下加载回来的 config 就污染了整个进程的默认值。
- *
- * 代价照旧：**删掉一行不会持久化**，下次读盘出厂那条又回来了。那是这套「全量表 +
- * 出厂垫底」结构的固有限制，要真正解决得改成「稀疏覆盖 + 显式删除列表」，
- * 那是一次独立的改造，不在这一轮。
+ * - 覆盖 = 上次存的覆盖里**这次表中没有、也没被报删除**的键，叠上这次算出来的
+ *   覆盖（见 `inheritedOverlay`）。整份重算会把清空那一刻的空白永久写进文件。
+ * - 删除只认调用方显式报上来的 `removedKeys`，外加盘上已经记着的那些
+ *   （见 `NamingRulesSavePayload`）。
  */
-function mergeWithDefaults(config: Partial<NamingRulesConfig>): NamingRulesConfig {
-  return {
+function toStored(config: NamingRulesSavePayload): StoredNamingRules {
+  const previous = readStoredConfig()
+  const stored: StoredNamingRules = {
+    schema: STORED_SCHEMA,
     version: config.version || DEFAULT_NAMING_RULES_CONFIG.version,
-    assetPrefixes: {
-      ...DEFAULT_NAMING_RULES_CONFIG.assetPrefixes,
-      ...(config.assetPrefixes || {})
-    },
-    // 逐条重建，不把出厂那个数组本身交出去 —— 它装的是可变对象，
-    // 按引用交出去等于把进程级默认值摊开给每个调用方随手改
-    textureSuffixPatterns: (
-      config.textureSuffixPatterns || DEFAULT_NAMING_RULES_CONFIG.textureSuffixPatterns
-    ).map((p) => ({ ...p })),
-    assetTypeToDirectory: {
-      ...DEFAULT_NAMING_RULES_CONFIG.assetTypeToDirectory,
-      ...(config.assetTypeToDirectory || {})
-    },
-    libraryAssetTypeToDirectory: {
-      ...DEFAULT_NAMING_RULES_CONFIG.libraryAssetTypeToDirectory,
-      ...(config.libraryAssetTypeToDirectory || {})
-    },
-    extensionToAssetType: {
-      ...DEFAULT_NAMING_RULES_CONFIG.extensionToAssetType,
-      ...(config.extensionToAssetType || {})
-    },
+    // 这几项本来就是整份覆盖（数组型的删除一直是真能删掉的），原样存
+    textureSuffixPatterns: Array.isArray(config.textureSuffixPatterns)
+      ? config.textureSuffixPatterns.map((p) => ({ ...p }))
+      : previous.textureSuffixPatterns,
     namingConvention: config.namingConvention || DEFAULT_NAMING_RULES_CONFIG.namingConvention,
     autoAddPrefix:
       config.autoAddPrefix !== undefined
@@ -137,9 +278,84 @@ function mergeWithDefaults(config: Partial<NamingRulesConfig>): NamingRulesConfi
       config.autoDetectTextureType !== undefined
         ? config.autoDetectTextureType
         : DEFAULT_NAMING_RULES_CONFIG.autoDetectTextureType,
-    customRules: (config.customRules ?? DEFAULT_NAMING_RULES_CONFIG.customRules ?? []).map(
-      normalizeCustomRule
-    )
+    // 存盘前也规整一遍：老的 pattern 翻成 match + text，enabled 补成布尔值。
+    // 读写两侧用同一套规则，存进去的东西和下次读出来的东西才一致
+    customRules: (Array.isArray(config.customRules)
+      ? config.customRules
+      : (previous.customRules ?? [])
+    ).map(normalizeCustomRule)
+  }
+
+  const removed: RemovedNamingKeys = {}
+  for (const field of MAP_FIELDS) {
+    const incoming = config[field]
+    // 这次没给这张表（类型上不该发生，但 IPC 那头是任意 JSON）：
+    // 覆盖和删除列表都照搬上次存的，这次当没碰过它
+    if (!incoming || typeof incoming !== 'object') {
+      const keptOverlay = previous[field]
+      if (keptOverlay) stored[field] = keptOverlay
+      const keptRemoved = previous.removed?.[field]
+      // 有实际内容才写，免得文件里多出一个 "removed": {} 或者 undefined
+      if (keptRemoved?.length) removed[field] = keptRemoved
+      continue
+    }
+
+    const overlay = {
+      ...inheritedOverlay(previous[field], incoming, config.removedKeys?.[field]),
+      ...overlayOf(field, incoming)
+    }
+    if (Object.keys(overlay).length > 0) stored[field] = overlay
+    const gone = removedFor(field, previous.removed?.[field], config.removedKeys?.[field], incoming)
+    if (gone.length > 0) removed[field] = gone
+  }
+  if (Object.keys(removed).length > 0) stored.removed = removed
+
+  return stored
+}
+
+/**
+ * 还原成完整配置：铺出厂默认 → 剔掉用户删掉的键 → 叠上他改过的值。
+ *
+ * 顺序上覆盖在删除之后，所以一个「删掉又重新加回来」的键按他现在填的值算。
+ *
+ * 另外每张表都重新建一个对象 —— `??` 那种写法会把模块级的
+ * `DEFAULT_NAMING_RULES_CONFIG.xxx` **按引用**交出去，谁改一下加载回来的 config
+ * 就污染了整个进程的默认值。
+ */
+function applyMap(field: MapField, stored: StoredNamingRules): Record<string, string> {
+  const merged: Record<string, string> = { ...DEFAULT_NAMING_RULES_CONFIG[field] }
+  for (const key of stored.removed?.[field] ?? []) {
+    delete merged[key]
+  }
+  return Object.assign(merged, stored[field] ?? {})
+}
+
+function mergeWithDefaults(stored: StoredNamingRules): NamingRulesConfig {
+  return {
+    version: stored.version || DEFAULT_NAMING_RULES_CONFIG.version,
+    assetPrefixes: applyMap('assetPrefixes', stored),
+    // 逐条重建，不把出厂那个数组本身交出去 —— 它装的是可变对象，
+    // 按引用交出去等于把进程级默认值摊开给每个调用方随手改
+    textureSuffixPatterns: (Array.isArray(stored.textureSuffixPatterns)
+      ? stored.textureSuffixPatterns
+      : DEFAULT_NAMING_RULES_CONFIG.textureSuffixPatterns
+    ).map((p) => ({ ...p })),
+    assetTypeToDirectory: applyMap('assetTypeToDirectory', stored),
+    libraryAssetTypeToDirectory: applyMap('libraryAssetTypeToDirectory', stored),
+    extensionToAssetType: applyMap('extensionToAssetType', stored),
+    namingConvention: stored.namingConvention || DEFAULT_NAMING_RULES_CONFIG.namingConvention,
+    autoAddPrefix:
+      stored.autoAddPrefix !== undefined
+        ? stored.autoAddPrefix
+        : DEFAULT_NAMING_RULES_CONFIG.autoAddPrefix,
+    autoDetectTextureType:
+      stored.autoDetectTextureType !== undefined
+        ? stored.autoDetectTextureType
+        : DEFAULT_NAMING_RULES_CONFIG.autoDetectTextureType,
+    customRules: (Array.isArray(stored.customRules)
+      ? stored.customRules
+      : (DEFAULT_NAMING_RULES_CONFIG.customRules ?? [])
+    ).map(normalizeCustomRule)
   }
 }
 
@@ -187,8 +403,23 @@ function normalizeCustomRule(rule: LegacyCustomRule): CustomRule {
 }
 
 /**
- * 重置为默认配置
+ * 重置为默认配置：直接写一份**空的稀疏文件**，不走 `saveNamingRulesConfig`。
+ *
+ * 四张映射表一个覆盖键都不留、一条删除都不记，于是读回来就是纯出厂值 ——
+ * 他删掉的出厂条目回来了，他自己加的键也一并没了，这正是「恢复默认」该有的样子。
+ *
+ * 不能交出厂表给 `saveNamingRulesConfig`：那条路的覆盖是继承 + 叠加的
+ * （见 `inheritedOverlay`），出厂表里没有的自定义键会被继续带下去，
+ * 重置完还留着半份旧配置。
  */
 export function resetNamingRulesConfig(): boolean {
-  return saveNamingRulesConfig(DEFAULT_NAMING_RULES_CONFIG)
+  return writeStored({
+    schema: STORED_SCHEMA,
+    version: DEFAULT_NAMING_RULES_CONFIG.version,
+    textureSuffixPatterns: DEFAULT_NAMING_RULES_CONFIG.textureSuffixPatterns.map((p) => ({ ...p })),
+    namingConvention: DEFAULT_NAMING_RULES_CONFIG.namingConvention,
+    autoAddPrefix: DEFAULT_NAMING_RULES_CONFIG.autoAddPrefix,
+    autoDetectTextureType: DEFAULT_NAMING_RULES_CONFIG.autoDetectTextureType,
+    customRules: (DEFAULT_NAMING_RULES_CONFIG.customRules ?? []).map(normalizeCustomRule)
+  })
 }

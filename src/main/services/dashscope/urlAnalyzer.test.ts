@@ -23,7 +23,22 @@ vi.mock('../../ai/providerKey', () => ({
   resolveProviderApiKey: async () => qwenKey.value
 }))
 
+/**
+ * `urlAnalyzer` 在模块求值期就读 `BAILIAN_KEY_MISSING_ERROR`（它的
+ * `VISION_KEY_HINT` 就是这个值），factory mock 不给的话整个文件加载不起来：
+ * 「No "BAILIAN_KEY_MISSING_ERROR" export is defined on the mock」，
+ * 下面 8 条用例一条都不跑 —— 包括「没有 Key 时不调用任何分析器」那条底线。
+ *
+ * 正文照抄 `imageAnalyzer.ts` 里那一份。这里抄一遍是为了让下面的断言有东西可比，
+ * **真正那句话长什么样由 `imageAnalyzer.test.ts` 守着**；这个文件守的是
+ * 「提示从 imageAnalyzer 来，不是 urlAnalyzer 自己又写一句 .env」。
+ */
+const BAILIAN_KEY_MISSING_ERROR =
+  '未配置百炼 API Key。到 https://bailian.console.aliyun.com 申请，' +
+  '在 设置 → 模型 里填进「阿里云百炼（通义千问）」这个服务商。'
+
 vi.mock('./imageAnalyzer', () => ({
+  BAILIAN_KEY_MISSING_ERROR,
   analyzeImageUrl: async (url: string, options?: { apiKey?: string }) => {
     calls.push({ kind: 'image', url, apiKey: options?.apiKey })
     return { success: true, content: '一张图', url }

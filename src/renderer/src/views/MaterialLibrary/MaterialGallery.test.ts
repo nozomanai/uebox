@@ -65,8 +65,13 @@ describe('MaterialGallery', () => {
     const { wrapper } = await mountGallery()
 
     expect(wrapper.find('.gallery-header').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('材质库')
     expect(wrapper.text()).not.toContain('离线材质节点资产')
+    // 「材质库」这个词只准出现在空态标题（「材质库为空」）里，页面上不再有第二处标题
+    const emptyState = wrapper.find('.library-empty-state')
+    const outsideEmptyState = wrapper
+      .text()
+      .replace(emptyState.exists() ? emptyState.text() : '', '')
+    expect(outsideEmptyState).not.toContain('材质库')
 
     const toolbar = wrapper.get('.browser-toolbar')
     expect(toolbar.find('.btn-import').exists()).toBe(true)

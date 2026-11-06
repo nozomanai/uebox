@@ -70,28 +70,17 @@ export function registerDashScopeIPC(): void {
   )
 
   /**
-   * 检查 DashScope/Qwen 配置状态
-   */
-  ipcMain.handle('dashscope:check', async () => {
-    const apiKey = process.env.QWEN_API_KEY
-    return {
-      configured: !!apiKey,
-      defaultModel: DEFAULT_VL_MODEL
-    }
-  })
-
-  /**
-   * 使用视觉模型为3D模型生成名称（图生模型：识别图片）
+   * 看着缩略图给 3D 模型取名。用用户自己绑的图片理解模型，不绑任何一家厂商。
    *
    * @param args.imageBase64 - 模型缩略图的 Base64 数据
-   * @returns 生成的名称
+   * @returns 生成的名称；没绑看得懂图的模型时带 `errorKey`，界面据此提示去配置
    */
   ipcMain.handle(
     'dashscope:generate3DModelName',
     async (
       _event,
       args: { imageBase64: string }
-    ): Promise<{ success: boolean; name?: string; error?: string }> => {
+    ): Promise<{ success: boolean; name?: string; error?: string; errorKey?: string }> => {
       const { imageBase64 } = args
 
       if (!imageBase64) {

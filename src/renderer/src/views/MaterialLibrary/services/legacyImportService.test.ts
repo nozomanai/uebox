@@ -6,10 +6,13 @@ import type {
   LegacyReadResult
 } from '@renderer/views/library-common/services/legacyImport'
 
+const readAllLegacyNodes = vi.fn<() => Promise<LegacyReadResult>>()
+/** 蓝图那条通道在主进程里就把材质行滤掉了，材质侧一次都不该碰它 */
 const readLegacyNodes = vi.fn<() => Promise<LegacyReadResult>>()
 
 vi.mock('@renderer/views/library-common/services/legacyImport', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
+  readAllLegacyNodes: () => readAllLegacyNodes(),
   readLegacyNodes: () => readLegacyNodes()
 }))
 
@@ -52,7 +55,14 @@ const ROWS: LegacyNodeRow[] = [
   row({ bluePrintKey: 'm1', name: 'M_Rock', code: MATERIAL_CODE, folderKey: 'f1' }),
   row({ bluePrintKey: 'm2', name: 'M_Sand', code: MATERIAL_CODE, folderKey: 'f1' }),
   row({ bluePrintKey: 'fn1', name: 'MF_Blend', code: FUNCTION_CODE, folderKey: 'f2' }),
-  row({ bluePrintKey: 'bp1', name: 'BP_Door', code: BLUEPRINT_CODE, folderKey: 'f1' })
+  row({ bluePrintKey: 'bp1', name: 'BP_Door', code: BLUEPRINT_CODE, folderKey: 'f1' }),
+  /**
+   * 旧库里真有 code 为空的行，而 `readAllLegacyNodes` 不筛类型、原样带上来。
+   * `LegacyNodeRow.code` 的类型写着 `string`，实际这条通道会吐 `null` ——
+   * 曾经 `null.trim()` 当场抛 TypeError，一条这样的行就让整个导入预览报错。
+   * 类型骗人，所以这里强转着写，钉住的是运行时的真样子。
+   */
+  row({ bluePrintKey: 'null1', name: '空代码', code: null as unknown as string, folderKey: 'f1' })
 ]
 
 const FOLDERS = [
@@ -65,7 +75,19 @@ describe('材质库旧版导入', () => {
     localStorage.clear()
     setActivePinia(createPinia())
     vi.clearAllMocks()
-    readLegacyNodes.mockResolvedValue({ blueprints: ROWS, folders: FOLDERS })
+    readAllLegacyNodes.mockResolvedValue({ blueprints: ROWS, folders: FOLDERS })
+    readLegacyNodes.mockResolvedValue({ blueprints: [], folders: [] })
+  })
+
+  /**
+   * 向导曾经走蓝图那条通道（`legacy:import-blueprints`），而主进程在那条通道上
+   * 先按蓝图类型筛了一遍 —— 和材质类型不相交，所以导出来恒为 0 条。
+   */
+  it('读表走不筛类型的那条通道，不碰蓝图通道', async () => {
+    await previewMigration('db')
+
+    expect(readAllLegacyNodes).toHaveBeenCalledTimes(1)
+    expect(readLegacyNodes).not.toHaveBeenCalled()
   })
 
   /**
@@ -76,7 +98,12 @@ describe('材质库旧版导入', () => {
     const preview = await previewMigration('db')
 
     expect(preview.entries.map((e) => e.name)).toEqual(['M_Rock', 'M_Sand', 'MF_Blend'])
-    expect(preview.totalSkipped).toBe(1)
+    expect(preview.totalSkipped).toBe(2)
+  })
+
+  /** code 为 null 的行只能被跳过，不能把整个预览带崩 */
+  it('code 为 null 的旧行不会让预览抛错', async () => {
+    await expect(previewMigration('db')).resolves.toBeTruthy()
   })
 
   it('预览按文件夹汇总，多的排前面', async () => {

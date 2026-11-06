@@ -435,10 +435,6 @@
     "errors": 2,
     "warnings": 0
   },
-  "src/renderer/src/store/modules/blueprintLibraryStore.ts": {
-    "errors": 3,
-    "warnings": 0
-  },
   "src/renderer/src/store/modules/chatSessions.ts": {
     "errors": 3,
     "warnings": 0
@@ -500,7 +496,7 @@
     "warnings": 0
   },
   "src/renderer/src/views/AssetManagement/components/AssetFileList.vue": {
-    "errors": 216,
+    "errors": 215,
     "warnings": 0
   },
   "src/renderer/src/views/AssetManagement/components/AssetTree.vue": {

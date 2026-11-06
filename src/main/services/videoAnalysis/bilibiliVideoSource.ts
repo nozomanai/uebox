@@ -1,3 +1,5 @@
+import { isBilibiliVideoUrl } from '../../../shared/bilibiliUrl'
+
 export interface BilibiliVideoUrlResult {
   success: boolean
   data: string
@@ -80,25 +82,11 @@ export async function resolveBilibiliVideoUrl(url: string): Promise<BilibiliVide
 }
 
 /**
- * 验证 Bilibili URL 格式
+ * 验证 Bilibili URL 格式。
+ *
+ * 判定本身在 `shared/bilibiliUrl.ts`，渲染层用的是同一份：这里放宽或收紧一侧，
+ * 另一侧就会出现「渲染层当视频、主进程不认」的那条死路。
  */
 export function isValidBilibiliUrl(url: string): boolean {
-  if (!url || typeof url !== 'string') return false
-
-  try {
-    const urlObj = new URL(url)
-    const hostname = urlObj.hostname.toLowerCase()
-
-    // 支持的 Bilibili 域名
-    const validHosts = ['bilibili.com', 'www.bilibili.com', 'm.bilibili.com']
-
-    if (['http:', 'https:'].includes(urlObj.protocol) && validHosts.includes(hostname)) {
-      // 视频格式：/video/BVxxx 或 /video/avxxx
-      return /^\/video\/(BV[a-zA-Z0-9]+|av\d+)/.test(urlObj.pathname)
-    }
-
-    return false
-  } catch {
-    return false
-  }
+  return isBilibiliVideoUrl(url)
 }

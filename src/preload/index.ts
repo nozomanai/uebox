@@ -29,6 +29,14 @@ import type { EditorSnapshot, MiniChatInitialMessage } from '../shared/editorSna
 import type { SpotlightAction, SpotlightSearchResponse } from '../shared/spotlight'
 import type { NotebookContextLevel } from '../shared/notebookContext'
 import type { RealtimeEchoGuard } from '../shared/realtimeEchoGuard'
+/**
+ * 命名规则保存的载荷。**只取类型**（`import type` 在编译期就被整条擦掉，
+ * 预加载包里不会出现主进程代码），这样桥这一侧和主进程的 handler 说的是同一个形状。
+ *
+ * `index.d.ts` 里另有一份同形的全局声明给渲染侧 —— tsc 会忽略和 `index.ts`
+ * 同名的 `.d.ts`，所以那一份在这里取不到，只能各写一次。
+ */
+import type { NamingRulesSavePayload } from '../main/utils/namingRulesConfig'
 
 /**
  * `ws:status` / `ws:status-changed` 送过来的那个对象。
@@ -59,7 +67,7 @@ aigc:importLocalModel aigc:save3DModelFromUrls aigc:update3DModelFolderName app:
 backup:create backup:delete backup:getConfig backup:list backup:restore backup:setConfig backup:stats
 clouddrive:downloadFile db:assetFolder:search db:assetSearch:engineFacet db:assetSearch:search db:settings:get db:settings:set db:shortcut:getAll db:shortcut:resetAll db:shortcut:update
 diagnostics:abandon-import diagnostics:dismiss-import-recovery diagnostics:list-import-recovery diagnostics:resume-import dialog:saveFile dialog:savePdfFromHtml dialog:showSaveDialog file:execute fs:writeFile
-image:deleteTask image:getActiveTasks image:getHistory image:startGeneration legacy:import-blueprints legacy:scan-db legacy:select-db
+image:deleteTask image:getActiveTasks image:getHistory image:startGeneration legacy:import-blueprints legacy:read-all-nodes legacy:scan-db legacy:select-db
 assetNote:create assetNote:delete assetNote:getById assetNote:saveImage assetNote:saveVideo assetNote:search assetNote:update
 note:create note:delete note:getById note:list note:saveImage note:saveVideo note:search note:update notebook:infographic:saveLocal
 notebook:outputs:read notebook:outputs:remove notebook:outputs:write
@@ -2222,9 +2230,13 @@ const api = {
      */
     loadConfig: () => ipcRenderer.invoke('namingRules:loadConfig'),
     /**
-     * 保存配置
+     * 保存配置。配置本体 + `removedKeys`（这一轮在设置页点掉的出厂键）。
+     *
+     * 类型不能写成 `NamingRulesConfig`：删除就只剩结构化克隆在运行期把它带过去，
+     * 哪天少报一份，类型上一点痕迹都没有 —— 而少报的后果是用户删不掉那一行。
      */
-    saveConfig: (config: unknown) => ipcRenderer.invoke('namingRules:saveConfig', config),
+    saveConfig: (config: NamingRulesSavePayload) =>
+      ipcRenderer.invoke('namingRules:saveConfig', config),
     /**
      * 重置配置
      */
@@ -2285,6 +2297,16 @@ const api = {
     generateImage: (args: Record<string, unknown>) => ipcRenderer.invoke('ai:image-generate', args),
     /** 绑没绑生图模型、绑的是哪个。不发网络请求，可以随便调 */
     imageModelStatus: () => ipcRenderer.invoke('ai:image-model-status')
+  },
+  /**
+   * AIGC 生图任务。
+   *
+   * 历史、删除、启动那几条走 `window.electron.ipcRenderer`（见 RAW_REQUEST_CHANNELS），
+   * 取消单独走这里：它不需要让渲染层拿到一条可以随便 send 的裸通道。
+   */
+  imageGeneration: {
+    /** 掐断正在出图的那条任务：中止请求、停掉进度模拟、把库里的记录置为失败 */
+    cancelTask: (taskId: string) => ipcRenderer.invoke('image:cancelTask', taskId)
   },
   /**
    * 本地直连 Provider 配置。
@@ -2539,12 +2561,6 @@ const api = {
       expireTime?: string
       error?: string
     }> => ipcRenderer.invoke('dashscope:upload', params),
-    /**
-     * 检查 DashScope 配置状态
-     * @returns 是否已配置及默认模型名称
-     */
-    check: (): Promise<{ configured: boolean; defaultModel: string }> =>
-      ipcRenderer.invoke('dashscope:check'),
     /**
      * 使用视觉模型为3D模型生成名称（图生模型：识别图片）
      * @param params.imageBase64 - 模型缩略图的 Base64 数据
@@ -2838,7 +2854,7 @@ const api = {
   },
   /**
    * Bilibili 视频分析 API
-   * 使用 Gemini 模型分析 Bilibili 视频内容
+   * 主进程把视频下到本地，交给用户在 设置 → 模型 里勾了「视频」能力的那个模型
    * 供知识库添加 Bilibili 来源使用
    */
   bilibili: {
@@ -2846,7 +2862,6 @@ const api = {
      * 分析 Bilibili 视频内容
      * @param params.url - Bilibili 视频 URL
      * @param params.prompt - 自定义分析提示词（可选）
-     * @param params.authToken - 认证 Token
      * @returns 分析结果，包含 Markdown 格式的视频内容描述
      */
     analyze: (params: {
@@ -2855,11 +2870,21 @@ const api = {
     }): Promise<{
       success: boolean
       content?: string
-      title?: string
       videoId?: string
-      realUrl?: string
       error?: string
     }> => ipcRenderer.invoke('bilibili:analyze', params),
+    /**
+     * 订阅分析进度。解析链接、下载、压缩、送模型各报一句，整条链最长要几分钟
+     * @returns 退订函数
+     */
+    onAnalyzeProgress: (
+      callback: (payload: { url: string; note: string }) => void
+    ): (() => void) => {
+      const handler = (_event: unknown, payload: { url: string; note: string }): void =>
+        callback(payload)
+      ipcRenderer.on('bilibili:analyzeProgress', handler)
+      return () => ipcRenderer.removeListener('bilibili:analyzeProgress', handler)
+    },
     /**
      * 验证 Bilibili URL 格式
      * @param url - 待验证的 URL

@@ -38,14 +38,17 @@ const i18n = createI18n({
         colInfo: '信息',
         colTags: '标签',
         loading: '加载中',
-        emptyTitle: '这里可以放你复用的东西',
-        emptyHint: '新建一个',
+        emptyTitle: '{library}为空',
+        emptyFolderTitle: '这个文件夹是空的',
+        filteredEmptyTitle: '没有符合条件的条目',
         clearSearch: '清除搜索',
         selectedCount: '已选择 {count} 项',
         clearSelection: '取消选择',
         resizeSidebar: '拖动调整文件夹栏宽度'
       },
-      test: { upload: '上传到云盘', deps: '查看依赖' }
+      test: { upload: '上传到云盘', deps: '查看依赖' },
+      blueprintTitle: '蓝图库',
+      materialTitle: '材质库'
     }
   }
 })
@@ -71,14 +74,14 @@ const folders: BrowserFolder[] = [
 
 const blueprintScope: BrowserScope = {
   id: 'blueprint',
-  title: 'x',
+  title: 'blueprintTitle',
   kinds: ['blueprint'],
   facets: []
 }
 
 const materialScope: BrowserScope = {
   id: 'material',
-  title: 'x',
+  title: 'materialTitle',
   kinds: ['material'],
   facets: []
 }
@@ -412,6 +415,68 @@ describe('列表模式是真表格，不是把网格压成一列', () => {
 
     expect(wrapper.findAll('.row-menu')).toHaveLength(2)
     expect(wrapper.find('.row-menu-dropdown').text()).toBe('删除')
+  })
+})
+
+describe('空状态', () => {
+  it('库是空的时说库名，筛没了时说筛选 —— 两种原因不共用一句话', async () => {
+    const wrapper = mount(LibraryBrowser, {
+      props: { scope: blueprintScope, items: [], folders },
+      global: { plugins: [i18n] }
+    })
+    expect(wrapper.find('.library-empty-state').text()).toBe('蓝图库为空')
+
+    await wrapper.setProps({ items })
+    await wrapper.find('input[type="search"]').setValue('不存在的名字')
+    expect(wrapper.find('.library-empty-state').text()).toBe('没有符合条件的条目')
+  })
+
+  it('换成材质库，空状态就说材质库 —— 一个壳不为两个库各写一套文案', () => {
+    const wrapper = mount(LibraryBrowser, {
+      props: { scope: materialScope, items: [], folders },
+      global: { plugins: [i18n] }
+    })
+    expect(wrapper.find('.library-empty-state').text()).toBe('材质库为空')
+  })
+
+  /**
+   * 点一个空文件夹不是「筛选没结果」：用户一个条件都没设，
+   * 跟他说「没有符合条件的条目」他只会去找自己设了什么条件。
+   */
+  it('只是点了个空文件夹，说的是文件夹空了，不是筛选没结果', async () => {
+    const wrapper = mount(LibraryBrowser, {
+      props: {
+        scope: blueprintScope,
+        folders,
+        items: [makeItem({ id: 'bp1', name: '跳跃逻辑', folderKey: 'chars' })]
+      },
+      global: { plugins: [i18n] }
+    })
+    // 第 0 行是「全部」，第 2 行是空文件夹「移动」
+    await wrapper.findAll('.tree-row')[2].trigger('click')
+    expect(wrapper.find('.library-empty-state').text()).toBe('这个文件夹是空的')
+  })
+
+  it('空文件夹里再搜一下，才回到筛选没结果', async () => {
+    const wrapper = mount(LibraryBrowser, {
+      props: {
+        scope: blueprintScope,
+        folders,
+        items: [makeItem({ id: 'bp1', name: '跳跃逻辑', folderKey: 'chars' })]
+      },
+      global: { plugins: [i18n] }
+    })
+    await wrapper.findAll('.tree-row')[2].trigger('click')
+    await wrapper.find('input[type="search"]').setValue('跳跃')
+    expect(wrapper.find('.library-empty-state').text()).toBe('没有符合条件的条目')
+  })
+
+  it('空状态不挂说明性小字 —— 「新建」就在工具栏上', () => {
+    const wrapper = mount(LibraryBrowser, {
+      props: { scope: blueprintScope, items: [], folders },
+      global: { plugins: [i18n] }
+    })
+    expect(wrapper.findAll('.library-empty-state p')).toHaveLength(0)
   })
 })
 

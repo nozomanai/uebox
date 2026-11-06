@@ -324,10 +324,12 @@ const isImageGenerating = computed(() => {
 })
 const currentProgress = computed(() => imageStore.previewTask?.progress ?? 0)
 const previewError = computed(() => {
-  if (imageStore.previewTask?.status === 'failed') {
-    return imageStore.previewTask.error || t('aigcStudio.generateFailed')
-  }
-  return undefined
+  const task = imageStore.previewTask
+  if (task?.status !== 'failed') return undefined
+  // 取消这类「主进程说不出语言」的原因放在 errorKey 上，厂商原文才在 error 里。
+  // 只看 error 的那一版会让同一屏上的卡片说「已取消」、大图区说「生成失败」。
+  const reason = task.errorKey ? t(task.errorKey) : task.error
+  return reason || t('aigcStudio.generateFailed')
 })
 const previewPrompt = computed(() => imageStore.previewTask?.prompt || '')
 const previewModelLabel = computed(() => getImageModelLabel(imageStore.previewTask?.model))

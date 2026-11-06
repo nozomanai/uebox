@@ -7,6 +7,7 @@ import {
   saveNamingRulesConfig,
   resetNamingRulesConfig
 } from '../utils/namingRulesConfig'
+import type { NamingRulesSavePayload } from '../utils/namingRulesConfig'
 import type { NamingRulesConfig } from '../../renderer/src/types/namingRules'
 
 /**
@@ -23,10 +24,12 @@ export function registerNamingRulesIPC(): void {
     }
   })
 
-  // 保存配置
+  // 保存配置。交上来的是完整配置 + 这一轮点掉的出厂键（removedKeys），
+  // 后者是删除能存下来的唯一依据 —— 别把参数退回成 NamingRulesConfig，
+  // 那样它会悄悄从类型上消失，只剩结构化克隆在运行期把它带过去
   ipcMain.handle(
     'namingRules:saveConfig',
-    async (_event, config: NamingRulesConfig): Promise<boolean> => {
+    async (_event, config: NamingRulesSavePayload): Promise<boolean> => {
       try {
         return saveNamingRulesConfig(config)
       } catch (error) {

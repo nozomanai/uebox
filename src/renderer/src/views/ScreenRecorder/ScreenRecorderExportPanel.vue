@@ -3,9 +3,7 @@
     <header class="panel-header">
       <div class="title-group">
         <div class="title">{{ $t('screenRecorderExportPanel.title') }}</div>
-        <div class="subtitle">
-          {{ recordingName || $t('screenRecorderExportPanel.subtitleFallback') }}
-        </div>
+        <div v-if="recordingName" class="subtitle">{{ recordingName }}</div>
       </div>
       <div class="header-actions">
         <AppButton @click="handleReset">{{
@@ -36,7 +34,6 @@
           </template>
           <div v-else class="empty-state">
             <div class="empty-title">{{ $t('screenRecorderExportPanel.noFileTitle') }}</div>
-            <div class="empty-desc">{{ $t('screenRecorderExportPanel.noFileDesc') }}</div>
           </div>
         </div>
 
@@ -91,13 +88,12 @@
             <a-radio-button value="mp4">MP4</a-radio-button>
             <a-radio-button value="gif">GIF</a-radio-button>
           </a-radio-group>
-          <div class="card-desc">{{ $t('screenRecorderExportPanel.gifDesc') }}</div>
         </div>
 
         <div class="section-card grid">
           <div class="field">
             <label>{{ $t('screenRecorderExportPanel.qualityLabel') }}</label>
-            <a-select v-model:value="quality" class="full-width">
+            <a-select v-model:value="quality" class="full-width" :disabled="format === 'gif'">
               <a-select-option value="high">
                 {{ $t('screenRecorderExportPanel.qualityOptions.high') }}
               </a-select-option>
@@ -125,31 +121,44 @@
           </div>
           <div class="field">
             <label>{{ $t('screenRecorderExportPanel.bitrateLabel') }}</label>
-            <a-input-number v-model:value="bitrate" :min="2" :max="50" :step="1" />
+            <a-input-number
+              v-model:value="bitrate"
+              :min="2"
+              :max="50"
+              :step="1"
+              :disabled="format === 'gif'"
+            />
           </div>
         </div>
 
         <div class="section-card">
           <div class="card-title">{{ $t('screenRecorderExportPanel.advancedSettingsTitle') }}</div>
           <div class="switch-row">
-            <div class="switch-info">
-              <div class="switch-title">
-                {{ $t('screenRecorderExportPanel.includeAudioTitle') }}
-              </div>
-              <div class="switch-desc">{{ $t('screenRecorderExportPanel.includeAudioDesc') }}</div>
-            </div>
-            <AppSwitch v-model:checked="includeAudio" :disabled="format === 'gif'" />
+            <div class="switch-title">{{ $t('screenRecorderExportPanel.includeAudioTitle') }}</div>
+            <!--
+              旁边那行 .switch-title 只是个 div，和开关没有程序化关联，
+              读屏软件停在开关上时念不出它是干什么的 —— 把同一个键再给 aria-label。
+            -->
+            <AppSwitch
+              v-model:checked="includeAudio"
+              :aria-label="$t('screenRecorderExportPanel.includeAudioTitle')"
+              :disabled="format === 'gif'"
+            />
           </div>
+          <!--
+            「高质量缩放」只在真的缩放时才进 ffmpeg 滤镜（见主进程 getScaleFilter：
+            分辨率为「原始」时整条 scale 滤镜都不生成，lanczos 跟着一起没了）。
+            所以分辨率是「原始」时把它置灰，别让用户以为开着就有效。
+          -->
           <div class="switch-row">
-            <div class="switch-info">
-              <div class="switch-title">
-                {{ $t('screenRecorderExportPanel.highQualityScaleTitle') }}
-              </div>
-              <div class="switch-desc">
-                {{ $t('screenRecorderExportPanel.highQualityScaleDesc') }}
-              </div>
+            <div class="switch-title">
+              {{ $t('screenRecorderExportPanel.highQualityScaleTitle') }}
             </div>
-            <AppSwitch v-model:checked="highQualityScale" />
+            <AppSwitch
+              v-model:checked="highQualityScale"
+              :aria-label="$t('screenRecorderExportPanel.highQualityScaleTitle')"
+              :disabled="resolution === 'original'"
+            />
           </div>
         </div>
 
@@ -171,7 +180,7 @@
             <span>{{ $t('screenRecorderExportPanel.summaryResolution') }}</span>
             <span>{{ resolutionLabel }}</span>
           </div>
-          <div class="summary-row">
+          <div v-if="format === 'mp4'" class="summary-row">
             <span>{{ $t('screenRecorderExportPanel.summaryQuality') }}</span>
             <span>{{ qualityLabel }}</span>
           </div>
@@ -445,19 +454,11 @@ function formatTime(value: number): string {
       }
 
       .empty-state {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
         text-align: center;
 
         .empty-title {
           font-size: 14px;
           font-weight: 600;
-        }
-
-        .empty-desc {
-          font-size: 12px;
-          color: hsl(225, 3%, 47%);
         }
       }
     }
@@ -556,11 +557,6 @@ function formatTime(value: number): string {
       font-size: 13px;
       font-weight: 600;
     }
-
-    .card-desc {
-      font-size: 12px;
-      color: var(--color-text-muted);
-    }
   }
 
   .switch-row {
@@ -568,21 +564,22 @@ function formatTime(value: number): string {
     align-items: center;
     justify-content: space-between;
 
-    .switch-info {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-
-      .switch-title {
-        font-size: 13px;
-        font-weight: 600;
-      }
-
-      .switch-desc {
-        font-size: 12px;
-        color: var(--color-text-muted);
-      }
+    .switch-title {
+      font-size: 13px;
+      font-weight: 600;
     }
+  }
+
+  /*
+    antd-override.css 给 .ant-input-number / .ant-select-selector 无条件写了
+    `color: var(--color-text-primary) !important`，没放过禁用态，而 ant-design-vue
+    自己的禁用文字色不带 !important —— 不在这里补一条同样带 !important 的，
+    GIF 下置灰的质量和码率只有灰底，里面的值仍是满对比度。
+  */
+  :deep(.ant-select-disabled .ant-select-selector),
+  :deep(.ant-select-disabled .ant-select-selection-item),
+  :deep(.ant-input-number-disabled .ant-input-number-input) {
+    color: var(--color-text-disabled) !important;
   }
 
   .format-group {

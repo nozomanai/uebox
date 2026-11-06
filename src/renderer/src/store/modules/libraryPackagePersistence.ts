@@ -637,7 +637,7 @@ export function createLibraryPackagePersistence<
   }
 
   const ready = hydrate().then(() => {
-    // 读取期间用户可能已经动过（比如刚灌进去的示例数据），补一次落盘
+    // 读取期间用户可能已经动过，补一次落盘
     if (dirty) persist()
   })
 

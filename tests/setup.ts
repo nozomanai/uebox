@@ -59,6 +59,11 @@ if (hasDom) {
       },
       notebook: {
         get: vi.fn()
+      },
+      bilibili: {
+        // 同上：回一个退订函数。NoteSourcePanel 在 onMounted 里订阅分析进度，
+        // 桩里缺了这个命名空间，lifecycle hook 抛错会让整个 mount() 失败
+        onAnalyzeProgress: vi.fn(() => vi.fn())
       }
     },
     writable: true,

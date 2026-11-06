@@ -4,6 +4,9 @@
  * 旧版 uebox-app 把蓝图节点和材质节点混在同一张表里，靠 T3D 代码的特征区分。
  * 蓝图库那边导 `蓝图节点 / 蓝图函数 / 脚本代码`，这里导 `材质节点 / 材质函数` ——
  * 正是蓝图那边统计在「跳过 N 个」里的那批。
+ *
+ * 所以读表必须走不筛类型的 `readAllLegacyNodes`：蓝图那条通道在主进程里就把
+ * 材质行滤掉了，从它读永远是 0 条。
  */
 import { useMaterialLibraryStore } from '@renderer/store/modules/materialLibraryStore'
 import {
@@ -26,7 +29,7 @@ import {
   detectLegacyNodeType,
   getFolderPath,
   matchesSelectedFolders,
-  readLegacyNodes,
+  readAllLegacyNodes,
   type LegacyImportPreview,
   type LegacyImportReport,
   type LegacyNodeRow
@@ -111,7 +114,7 @@ function transformEntry(row: LegacyNodeRow, legacyType: string): MaterialEntry {
 
 /** 这个旧库里有多少材质可以导，其中哪些已经在库中 */
 export async function previewMigration(dbPath: string): Promise<LegacyImportPreview> {
-  const { blueprints: rows, folders } = await readLegacyNodes(dbPath)
+  const { blueprints: rows, folders } = await readAllLegacyNodes(dbPath)
   const folderMap = buildFolderMap(folders)
   const existingIds = new Set(useMaterialLibraryStore().entries.map((entry) => entry.id))
 
@@ -154,7 +157,7 @@ export async function executeMigration(
   onProgress?: (current: number, total: number) => void
 ): Promise<LegacyImportReport> {
   const store = useMaterialLibraryStore()
-  const { blueprints: rows, folders } = await readLegacyNodes(dbPath)
+  const { blueprints: rows, folders } = await readAllLegacyNodes(dbPath)
   const folderMap = buildFolderMap(folders)
 
   const eligible: { row: LegacyNodeRow; legacyType: string }[] = []

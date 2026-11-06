@@ -958,10 +958,6 @@ const modeTitle = computed(() => {
                   size="large"
                   @press-enter="handleAdd"
                 />
-                <div class="input-hint">
-                  输入 Bilibili
-                  视频链接，将自动公开分析视频内容，该功能为第三方提供的实验功能，不保证可用性
-                </div>
               </div>
 
               <div v-else-if="currentMode === 'wechat'" class="input-group">

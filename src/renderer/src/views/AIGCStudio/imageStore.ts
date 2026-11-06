@@ -4,7 +4,10 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import i18n from '@renderer/i18n'
 import { toLocalResourceUrl } from '@renderer/utils/localResource'
+import { message } from '@renderer/utils/messageManager'
+import { NO_VISION_MODEL_ERROR_KEY } from '../../../../shared/aiNamingErrorKey'
 import {
   GPT_IMAGE_MODEL,
   GPT_IMAGE_PROVIDER,
@@ -144,6 +147,44 @@ function getFriendlyErrorMessage(errorMsg: string | undefined | null): string {
 }
 
 /**
+ * 主进程取消任务时写进 `error_msg` 和 failed 事件的标记。
+ *
+ * 主进程不知道界面是什么语言，所以它给标记而不是成品文案（见 `src/main/i18n.ts`
+ * 文件头）。真源是 `src/main/services/imagePollingService.ts` 的
+ * `IMAGE_TASK_CANCELLED_MARKER`，两边必须一字不差 —— 跨进程的常量没有共享文件可放。
+ */
+const IMAGE_TASK_CANCELLED_MARKER = 'IMAGE_TASK_CANCELLED_BY_USER'
+
+/** 取消的卡片写哪一句，由界面语言决定，所以存的是 key */
+const CANCELLED_BY_USER_ERROR_KEY = 'aigcImageHistoryPanel.error.cancelledByUser'
+
+function isCancelledMarker(raw: string | undefined | null): boolean {
+  return String(raw || '').trim() === IMAGE_TASK_CANCELLED_MARKER
+}
+
+/**
+ * 库里那条原始 `error_msg` 怎么交给界面：能翻的给 i18n key，
+ * 翻不了的（厂商原文）在这里过一遍友好化。
+ *
+ * **只给读库这一路用。** `failed` 事件里的文案已经由主进程友好化过了，
+ * 再过一遍就是按两套阈值压两次 —— 主进程超过 100 字才压成通用句，这里是 50 字，
+ * 中间那一段「主进程特意原样透出的原因」会在卡片上变成一句
+ * 「生成失败，请稍后重试」，用户照着它什么也做不了。
+ *
+ * 两个字段都要显式赋值 —— 它们是 `Object.assign` 到同一条任务上的，
+ * 上一次失败留下的那个字段不清掉就会盖住这一次。
+ */
+function describeTaskError(raw: string | undefined | null): {
+  error?: string
+  errorKey?: string
+} {
+  if (isCancelledMarker(raw)) {
+    return { error: undefined, errorKey: CANCELLED_BY_USER_ERROR_KEY }
+  }
+  return { error: getFriendlyErrorMessage(raw), errorKey: undefined }
+}
+
+/**
  * 图片生成任务状态
  */
 export type ImageTaskStatus = 'pending' | 'processing' | 'completed' | 'failed'
@@ -175,6 +216,8 @@ export interface ImageGenerationTask {
   /** 材质模式 - 生成 PBR 贴图 */
   materialMode?: boolean
   error?: string
+  /** 失败原因的 i18n key（取消这类主进程说不出语言的原因走它，优先于 `error`） */
+  errorKey?: string
   createdAt?: string
   lastUpdatedAt?: number
 }
@@ -276,6 +319,8 @@ export const useImageStudioStore = defineStore('imageStudio', () => {
           materialMode?: boolean
           /** AI生成的任务名称 */
           name?: string
+          /** 没拿到 AI 名字的可识别原因（见 shared/aiNamingErrorKey.ts） */
+          nameErrorKey?: string
           error?: string
         }
       ) => {
@@ -299,7 +344,16 @@ export const useImageStudioStore = defineStore('imageStudio', () => {
             if (data.taskId) setPreviewTask(data.taskId)
             break
           case 'failed':
-            updateTaskStatus(data.taskId, 'failed', { error: data.error })
+            // 事件里的文案主进程已经友好化过了，这里只做标记映射、原文照传 ——
+            // 再过一遍渲染层那套（阈值 50 字，主进程是 100 字）会把厂商说清楚的
+            // 那些原因压成一句「生成失败，请稍后重试」。
+            updateTaskStatus(
+              data.taskId,
+              'failed',
+              isCancelledMarker(data.error)
+                ? { error: undefined, errorKey: CANCELLED_BY_USER_ERROR_KEY }
+                : { error: data.error, errorKey: undefined }
+            )
             break
           case 'nameUpdated':
             // 更新任务名称（不改变状态）
@@ -310,6 +364,15 @@ export const useImageStudioStore = defineStore('imageStudio', () => {
               if (task) {
                 task.name = data.name
               }
+            }
+            /*
+              只有「一个看得懂图的模型都没绑」这一种说出来：不去设置里绑一个，
+              AIGC 出的图永远只能叫 image_1699…，而用户不知道为什么。
+              网络抖动、余额不够、密钥解不开那几种主进程不给 nameErrorKey ——
+              那些是一次性失败，弹出来等于把用户赶去一个已经填好的页面。
+            */
+            if (data.nameErrorKey === NO_VISION_MODEL_ERROR_KEY) {
+              message.warning(i18n.global.t('assetManagement.aiNaming.noVisionModel'))
             }
             break
         }
@@ -422,6 +485,19 @@ export const useImageStudioStore = defineStore('imageStudio', () => {
       return
     }
 
+    // 已经落进历史的终态不许被后到的事件翻回进行中。
+    // 取消的任务会收到比取消更晚的 taskCreated / progress：翻回 processing 的那张卡
+    // 留在历史里转圈，而看门狗只遍历 activeTasks —— 再没人能把它超时掉。
+    // `complete` 不在此列：图真的落进资产库了，说完成比说失败更接近事实。
+    if (
+      isInHistory &&
+      (task.status === 'failed' || task.status === 'completed') &&
+      (status === 'pending' || status === 'processing')
+    ) {
+      console.log(`[ImageStudio] 任务 ${taskId} 已是终态，忽略后到的 ${status} 事件`)
+      return
+    }
+
     task.status = status
     task.lastUpdatedAt = Date.now()
     if (extra) {
@@ -481,7 +557,7 @@ export const useImageStudioStore = defineStore('imageStudio', () => {
       style: record.style,
       count: record.count,
       materialMode: Boolean(record.material_mode),
-      error: getFriendlyErrorMessage(record.error_msg),
+      ...describeTaskError(record.error_msg),
       createdAt: record.created_at,
       lastUpdatedAt: Date.now()
     }

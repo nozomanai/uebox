@@ -773,6 +773,8 @@ import { listThumbnailUrl } from '@renderer/utils/listThumbnail'
 import { resolveAssetUrl } from '@renderer/utils/assetAccess'
 import { getAssetTypeColor } from '@renderer/utils/tool'
 import assetDataAPI from '@renderer/api/assetData'
+import { dashScopeAPI } from '@renderer/api/dashScope'
+import { NO_VISION_MODEL_ERROR_KEY } from '@core/shared/aiNamingErrorKey'
 import { startNativeFileDrag } from '@renderer/api/nativeFileDrag'
 import { handleExternalAssetDrag } from '../utils/externalAssetDrag'
 import { useImportTasksStore } from '@renderer/store/modules/importTasks'
@@ -4842,9 +4844,7 @@ const handleAigcThumbnailComplete = async (payload: {
   if (folderKey && base64) {
     try {
       console.log('[AssetFileList] 开始使用视觉模型为AIGC模型命名:', folderKey)
-      const nameResult = await (window as any).api.dashScope.generate3DModelName({
-        imageBase64: base64
-      })
+      const nameResult = await dashScopeAPI.generate3DModelName(base64)
 
       if (nameResult.success && nameResult.name) {
         // 添加日期后缀
@@ -4860,6 +4860,17 @@ const handleAigcThumbnailComplete = async (payload: {
         await assetContext.refreshCurrentFolder()
       } else {
         console.warn('[AssetFileList] AI命名失败:', nameResult.error)
+        /*
+          只有「没绑看得懂图的模型」这一种才说出来：用户不去设置里绑一个，
+          这个功能永远不会好。原先这一路只落一行日志，用户看到的是文件夹
+          拿不到中文名、也不知道为什么。
+
+          网络抖动、余额不够、密钥解不开那几种不弹 —— 主进程不给 errorKey，
+          那些是一次性的失败，弹出来只会把用户赶去一个已经填好的页面。
+        */
+        if (nameResult.errorKey === NO_VISION_MODEL_ERROR_KEY) {
+          message.warning(t('assetManagement.aiNaming.noVisionModel'))
+        }
       }
     } catch (error) {
       console.error('[AssetFileList] AI命名异常:', error)

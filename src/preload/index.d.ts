@@ -104,6 +104,27 @@ export {}
 
 declare global {
   /**
+   * 命名规则保存时交上去的东西：完整配置 **+ 这一次点掉了哪些出厂键**。
+   *
+   * 和主进程的 `NamingRulesSavePayload`（`src/main/utils/namingRulesConfig.ts`）
+   * 是同一个形状。这里重写一遍而不是 import 过来：那个模块 import 了 `electron` 和 `fs`，
+   * 而本文件同时在 tsconfig.web 的程序里，把主进程模块拉进渲染侧会直接挂。
+   * 放在 global 里是为了 `src/preload/index.ts` 也能标注同一个类型（硬规则 4）。
+   * 四张表的键名跟着主进程那边改。
+   */
+  type NamingRulesSavePayload = import('../renderer/src/types/namingRules').NamingRulesConfig & {
+    removedKeys?: Partial<
+      Record<
+        | 'assetPrefixes'
+        | 'assetTypeToDirectory'
+        | 'libraryAssetTypeToDirectory'
+        | 'extensionToAssetType',
+        string[]
+      >
+    >
+  }
+
+  /**
    * 引擎桥接（盒子这一侧的 WebSocket 服务）的状态。
    *
    * 注意它**不是** `{ success, data }` 那个形状 —— `ws:status` 直接返回它。
@@ -2070,10 +2091,8 @@ declare global {
     namingRules: {
       /** 加载配置 */
       loadConfig: () => Promise<import('../renderer/src/types/namingRules').NamingRulesConfig>
-      /** 保存配置 */
-      saveConfig: (
-        config: import('../renderer/src/types/namingRules').NamingRulesConfig
-      ) => Promise<boolean>
+      /** 保存配置。`removedKeys` 是这一轮在设置页点掉的出厂键，按表分组 */
+      saveConfig: (config: NamingRulesSavePayload) => Promise<boolean>
       /** 重置配置 */
       resetConfig: () => Promise<boolean>
     }
@@ -2136,6 +2155,11 @@ declare global {
         success: boolean
         data?: { configured: boolean; model: string | null }
       }>
+    }
+    /** AIGC 生图任务 */
+    imageGeneration: {
+      /** 掐断正在出图的那条任务。主进程会补发一条 `image:event` 的 failed，界面据此回落 */
+      cancelTask: (taskId: string) => Promise<{ success: boolean; error?: string }>
     }
     /**
      * 本地直连 Provider 配置。
@@ -2356,11 +2380,6 @@ declare global {
         expireTime?: string
         error?: string
       }>
-      /**
-       * 检查 DashScope 配置状态
-       * @returns 是否已配置及默认模型名称
-       */
-      check: () => Promise<{ configured: boolean; defaultModel: string }>
     }
     /** 实时语音连接。密钥只在主进程，渲染层只负责麦克风与喇叭 */
     realtimeVoice: {
@@ -2619,7 +2638,7 @@ declare global {
     }
     /**
      * Bilibili 视频分析 API
-     * 使用 Gemini 模型分析 Bilibili 视频内容
+     * 主进程把视频下到本地，交给用户在 设置 → 模型 里勾了「视频」能力的那个模型
      * 供知识库添加 Bilibili 来源使用
      */
     bilibili: {
@@ -2627,17 +2646,19 @@ declare global {
        * 分析 Bilibili 视频内容
        * @param params.url - Bilibili 视频 URL
        * @param params.prompt - 自定义分析提示词（可选）
-       * @param params.authToken - 认证 Token
        * @returns 分析结果，包含 Markdown 格式的视频内容描述
        */
       analyze: (params: { url: string; prompt?: string }) => Promise<{
         success: boolean
         content?: string
-        title?: string
         videoId?: string
-        realUrl?: string
         error?: string
       }>
+      /**
+       * 订阅分析进度。解析链接、下载、压缩、送模型各报一句，整条链最长要几分钟
+       * @returns 退订函数
+       */
+      onAnalyzeProgress: (callback: (payload: { url: string; note: string }) => void) => () => void
       /**
        * 验证 Bilibili URL 格式
        * @param url - 待验证的 URL

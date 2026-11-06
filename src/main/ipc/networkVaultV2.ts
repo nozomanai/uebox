@@ -20,7 +20,8 @@ import { rememberVaultAccessKey, resolveVaultAccessKey } from '../networkV2/vaul
 import { authStatusOf } from '../networkV2/SyncClient'
 import { recordAndBroadcast } from '../networkV2/rowSnapshot'
 import { VaultManager, VaultType } from '../sqliteDataBase/VaultManager'
-import type { ServerConfig, ChangeOp, TrackedTable } from '../networkV2/SyncProtocol'
+import type { ChangeOp, TrackedTable } from '../networkV2/SyncProtocol'
+import { registerVaultScanHandler, withVaultScanLock } from '../networkV2/AssetServer'
 import {
   isFolderActive,
   collectFolderSubtreeKeys,
@@ -220,10 +221,30 @@ function recordSubtreeDeletionChanges(
 // ─────────────────────── 共享扫描逻辑 ───────────────────────
 
 /**
- * Server 模式文件扫描 — 扫描 vault 目录，将新发现的资产入库
- * 由 IPC  `networkVaultV2:scan`（本地）和 HTTP `POST /scan`（远程）共用
+ * Server 模式文件扫描的唯一入口 —— 由 IPC `networkVaultV2:scan`（本机主机）和
+ * HTTP `POST /scan`（远程可写客户端）共用。
+ *
+ * 可达性检查和互斥锁都放在这里，不放在各自的调用处：
+ *  - 共享盘掉线时 `collectFiles` 把 readdir 失败吞成 `failedDirs++`，扫不到文件
+ *    就按「没有新文件」正常返回，远程客户端读到的是「扫描完成」—— 假成功。
+ *  - 两条路径各管一把锁等于没锁：同时点「刷新」会把同一个文件入两遍库。
+ *
+ * 失败一律抛异常：IPC 那条由外层 catch 转成 `fail(message)`，HTTP 那条由
+ * AssetServer 转成 500（扫描已在跑时是 409）。
  */
 async function performServerScan(
+  vsm: VaultServiceManager,
+  vaultId: string,
+  db: Database.Database,
+  networkPath: string
+): Promise<Record<string, unknown>> {
+  if (!networkPath || !existsSync(networkPath)) {
+    throw new Error('网络路径不可访问')
+  }
+  return withVaultScanLock(vaultId, () => runServerScan(vsm, vaultId, db, networkPath))
+}
+
+async function runServerScan(
   vsm: VaultServiceManager,
   vaultId: string,
   db: Database.Database,
@@ -284,6 +305,9 @@ async function performServerScan(
       newFolders: 0,
       totalScanned: scannedFiles.length,
       failedDirs,
+      // 有目录读失败就不是一次完整的扫描：调用方据此告诉用户「部分目录未读取」，
+      // 不能一律报「扫描完成」
+      partial: failedDirs > 0,
       durationMs: Date.now() - scanStart
     }
   }
@@ -535,6 +559,7 @@ async function performServerScan(
     totalScanned: scannedFiles.length,
     parseErrors,
     failedDirs,
+    partial: failedDirs > 0,
     durationMs: Date.now() - scanStart
   }
   console.log(`[V2-Scan] 扫描完成:`, result)
@@ -546,57 +571,15 @@ async function performServerScan(
 export function registerNetworkVaultV2Handlers(): void {
   const vsm = VaultServiceManager.getInstance()
 
+  // 远程 Client 调 POST /scan 时复用这里的扫描逻辑。
+  // 注册而不是在 Server 启动处注入：Server 由 VaultManager 在数据库初始化阶段拉起，
+  // 比 IPC 注册早（见 AssetServer.registerVaultScanHandler 的说明）。
+  // 必须使用 vault 参数的 db/vaultId，不可捕获外层 vaultId（多 Vault 下会错位）
+  registerVaultScanHandler(async (vault) => {
+    return performServerScan(vsm, vault.vaultId, vault.db, vault.networkPath)
+  })
+
   // ========== 生命周期 ==========
-
-  /**
-   * 以 Server 模式启动网络保管库
-   * @param vaultId  保管库 ID
-   * @param name     保管库显示名
-   * @param networkPath  网络共享路径（如 \\server\Assets）
-   * @param config   可选 Server 配置
-   */
-  ipcMain.handle(
-    'networkVaultV2:startServer',
-    async (
-      _event,
-      vaultId: string,
-      name: string,
-      networkPath: string,
-      config?: Partial<ServerConfig>
-    ) => {
-      try {
-        const db = getVaultDatabase(vaultId)
-        if (!db) return fail('保管库数据库未打开')
-
-        const vaultManager = VaultManager.getInstance()
-        const state = await vsm.startServer(
-          vaultId,
-          name,
-          networkPath,
-          db,
-          {
-            keys: vaultManager.getOrCreateNetworkVaultServerKeys(vaultId),
-            publishWriteKeyToShare: vaultManager.isNetworkVaultShareWriteEnabled(vaultId)
-          },
-          config
-        )
-
-        // 注入远程扫描回调：远程 Client 调 POST /scan 时，复用 IPC 扫描逻辑
-        // 注意：必须使用 vault 参数的 db/vaultId，不可捕获外层 vaultId（多 Vault 下会错位）
-        const server = vsm.getServer()
-        if (server) {
-          server.setScanHandler(async (vault) => {
-            return performServerScan(vsm, vault.vaultId, vault.db, vault.networkPath)
-          })
-        }
-
-        console.log(`[IPC-V2] Server 已启动: ${name} on :${state.port}`)
-        return ok(stateToDto(state))
-      } catch (err) {
-        return fail(err instanceof Error ? err.message : String(err))
-      }
-    }
-  )
 
   /**
    * 停止 Server 模式
@@ -1649,12 +1632,35 @@ export function registerNetworkVaultV2Handlers(): void {
             }
           }
 
+          /**
+           * 拉取同步与扫描解耦：扫描失败也要把主机上已有的变更拉下来。
+           *
+           * 原来 `pullChanges()` 写在扫描的 try 里，扫描一抛异常就整条跳过 ——
+           * 用户点一次「刷新」，既没扫描也没同步，而别人提交的改动明明已经在主机上。
+           *
+           * 瞬时网络错误在这一步自己重试一次，不再整轮重跑扫描：大库扫一遍要几分钟，
+           * 为一次 `fetch failed` 重扫一遍太贵，而重复扫描本身不产生新资产。
+           */
+          const pullChangesWithRetry = async (stage: string): Promise<boolean> => {
+            for (let attempt = 0; attempt < 2; attempt++) {
+              try {
+                await client.pullChanges()
+                return true
+              } catch (pullErr) {
+                console.warn(`[V2-Scan] ${stage}拉取同步失败: ${formatRemoteScanError(pullErr)}`)
+                if (attempt > 0 || !isRetryableRemoteScanError(pullErr)) return false
+                await new Promise((resolve) => setTimeout(resolve, 800))
+              }
+            }
+            return false
+          }
+
           let lastError: unknown = null
           for (let attempt = 0; attempt < 2; attempt++) {
             try {
               const scanResult = await invokeRemoteScan()
               console.log(`[V2-Scan] 远程扫描完成, 拉取变更...`)
-              await client.pullChanges()
+              if (!(await pullChangesWithRetry('扫描后'))) return fail('同步拉取失败')
               return ok(scanResult)
             } catch (err) {
               lastError = err
@@ -1663,16 +1669,12 @@ export function registerNetworkVaultV2Handlers(): void {
                 `[V2-Scan] 远程扫描请求失败 (attempt ${attempt + 1}/2): ${formatRemoteScanError(err)}`
               )
               if (!shouldRetry) break
-
-              try {
-                await client.pullChanges()
-              } catch (pullErr) {
-                console.warn(`[V2-Scan] 重试前拉取同步失败: ${formatRemoteScanError(pullErr)}`)
-              }
               await new Promise((resolve) => setTimeout(resolve, 800))
             }
           }
 
+          // 扫描这一步没成，同步照做
+          await pullChangesWithRetry('扫描失败后')
           return fail(`远程扫描失败: ${formatRemoteScanError(lastError)}`)
         } catch (err) {
           return fail(`远程扫描失败: ${err instanceof Error ? err.message : String(err)}`)
@@ -1687,12 +1689,8 @@ export function registerNetworkVaultV2Handlers(): void {
       const state = vsm.getAllStates().find((s) => s.vaultId === vaultId)
       if (!state) return fail('Vault 未注册')
 
-      const networkPath = state.networkPath
-      if (!networkPath || !existsSync(networkPath)) {
-        return fail('网络路径不可访问')
-      }
-
-      const result = await performServerScan(vsm, vaultId, db, networkPath)
+      // 可达性检查在 performServerScan 里，和远程那条路径共用
+      const result = await performServerScan(vsm, vaultId, db, state.networkPath)
       return ok(result)
     } catch (err) {
       return fail(err instanceof Error ? err.message : String(err))

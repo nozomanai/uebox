@@ -4749,8 +4749,6 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
         youtubeLabel: 'YouTube URL',
         youtubeHint: 'Enter YouTube video link',
         bilibiliLabel: 'Bilibili URL',
-        bilibiliHint:
-          'Enter Bilibili video link for automatic content analysis (experimental third-party feature, availability not guaranteed)',
         wechatLabel: 'WeChat Article Link',
         wechatHint: 'Enter WeChat article link to automatically extract and convert to Markdown'
       },
@@ -5328,8 +5326,9 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
     colInfo: 'Info',
     colTags: 'Tags',
     loading: 'Loading…',
-    emptyTitle: 'A place for things you reuse',
-    emptyHint: 'Create one, or drag files into a folder on the left',
+    emptyTitle: '{library} is empty',
+    emptyFolderTitle: 'This folder is empty',
+    filteredEmptyTitle: 'No matching items',
     clearSearch: 'Clear search',
     folderSection: 'Folders',
     createFolder: 'New folder',
@@ -5518,6 +5517,9 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
     }
   },
   aigcImageHistoryPanel: {
+    error: {
+      cancelledByUser: 'Generation cancelled'
+    },
     status: {
       generating: 'Generating {progress}%',
       pending: 'Queued',
@@ -7037,18 +7039,15 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
   },
   screenRecorderExportPanel: {
     title: 'Recording export',
-    subtitleFallback: 'Trim and export settings',
     resetButton: 'Reset',
     exportButton: 'Export',
     previewSectionTitle: 'Preview',
     noFileTitle: 'No recording selected',
-    noFileDesc: 'Finish a recording first or provide a video URL',
     trimRangeTitle: 'Trim range',
     startLabel: 'Start',
     endLabel: 'End',
     trimDurationLabel: 'Trim duration',
     exportFormatTitle: 'Export format',
-    gifDesc: 'GIF is smaller but has no audio',
     qualityLabel: 'Quality',
     qualityOptions: {
       high: 'High',
@@ -7063,9 +7062,7 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
     bitrateLabel: 'Bitrate',
     advancedSettingsTitle: 'Advanced settings',
     includeAudioTitle: 'Include audio',
-    includeAudioDesc: 'MP4 only',
     highQualityScaleTitle: 'High-quality scaling',
-    highQualityScaleDesc: 'Keeps sharpness and detail',
     summaryTitle: 'Export summary',
     summaryFormat: 'Format',
     summaryDuration: 'Duration',
@@ -8047,7 +8044,12 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
       }
     },
     scan: {
-      done: 'Scan complete'
+      done: 'Scan complete',
+      partial: 'Scan complete. {count} folder(s) could not be read.'
+    },
+    aiNaming: {
+      noVisionModel:
+        'No vision-capable model. Assign one to Image understanding in Settings → Models.'
     },
     folder: {
       unknownFolder: 'Unknown folder',
@@ -8542,22 +8544,6 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
     defaultGraph: {
       name: 'New event graph',
       description: 'Default event graph'
-    },
-    /*
-     * The four sample blueprints seeded into an empty library.
-     *
-     * An English user opening the blueprint library for the first time saw
-     * four samples described entirely in Chinese. (Whether sample data should
-     * exist at all is a separate question — see review §4.6.)
-     */
-    samples: {
-      damageSystem: 'General damage calculation, physical and magical',
-      calculateDamage: 'Compute the final damage value',
-      damageMultiplier: 'Damage multiplier',
-      isActive: 'Is active',
-      characterController: 'Character movement: jump, sprint, climb',
-      mainMenu: 'Main menu UI blueprint',
-      networkManager: 'Network replication manager'
     }
   },
   miniChatWindow: {

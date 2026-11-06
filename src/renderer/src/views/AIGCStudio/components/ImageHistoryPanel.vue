@@ -18,10 +18,12 @@ import {
   PhPencilSimple,
   PhSquaresFour,
   PhTrash,
+  PhX,
   PhXCircle
 } from '@phosphor-icons/vue'
 import { message } from '@renderer/utils/messageManager'
 import { confirmDialog } from '@renderer/utils/dialog'
+import { imageGenerationAPI } from '@renderer/api/imageGeneration'
 import { getTaskDisplayUrls, useImageStudioStore, type ImageGenerationTask } from '../imageStore'
 import {
   getAvailableImageTaskActions,
@@ -52,6 +54,7 @@ const searchKeyword = ref('')
 const activeFilter = ref<FilterKey>('all')
 const sortOrder = ref<SortKey>('desc')
 const isClearingFailed = ref(false)
+const cancellingTaskIds = ref<string[]>([])
 const viewMode = ref<ViewMode>(
   localStorage.getItem(VIEW_MODE_KEY) === 'gallery' ? 'gallery' : 'list'
 )
@@ -97,7 +100,7 @@ const filteredTasks = computed(() => {
         task.style,
         task.resolution,
         task.ratio,
-        task.error
+        getErrorText(task)
       ]
         .filter(Boolean)
         .join(' ')
@@ -166,6 +169,17 @@ function getStatusLabel(task: ImageGenerationTask): string {
   if (task.status === 'completed') return t('aigcImageHistoryPanel.status.completed')
   if (task.status === 'failed') return t('aigcImageHistoryPanel.status.failed')
   return t('aigcImageHistoryPanel.status.unknown')
+}
+
+/**
+ * 卡片上那行失败原因。
+ *
+ * 主进程说不出语言的原因（用户取消）给的是 i18n key，厂商报错给的是原文，
+ * 两者都从这里出去 —— 搜索和卡片看到的必须是同一句。
+ */
+function getErrorText(task: ImageGenerationTask): string {
+  if (task.errorKey) return t(task.errorKey)
+  return task.error || ''
 }
 
 function getThumbnail(task: ImageGenerationTask): string | null {
@@ -284,6 +298,35 @@ function menuActionsFor(task: ImageGenerationTask): ImageTaskActionDef[] {
     hasPrompt: Boolean(task.prompt),
     isCompleted: task.status === 'completed'
   })
+}
+
+function isCancellable(task: ImageGenerationTask): boolean {
+  return task.status === 'pending' || task.status === 'processing'
+}
+
+/**
+ * 掐断还在出图的那条任务。
+ *
+ * 终态只认主进程那一份：它中止请求、停掉进度模拟、把库里的记录置为失败，
+ * 再补发一条 `image:event` 的 failed，卡片靠它回落。取消请求比任务登记先到时
+ * 主进程会把 ID 记下，登记完自己停掉，照样回这条事件。
+ *
+ * 所以这里**不要**再本地置一次失败：以前那一手恰好只在「其实没取消成功」的时候
+ * 触发，把卡片挪进历史、翻成失败，而主进程的图还在照出 —— 钱花了、图进库了，
+ * 卡片随后被后到的 progress 事件翻回转圈，而看门狗只看活跃列表，再没人能收它。
+ */
+async function handleCancelTask(task: ImageGenerationTask): Promise<void> {
+  if (cancellingTaskIds.value.includes(task.id)) return
+  cancellingTaskIds.value = [...cancellingTaskIds.value, task.id]
+
+  try {
+    const result = await imageGenerationAPI.cancelTask(task.id)
+    if (!result.success) {
+      message.error(result.error || t(result.errorKey || 'common.error'))
+    }
+  } finally {
+    cancellingTaskIds.value = cancellingTaskIds.value.filter((id) => id !== task.id)
+  }
 }
 
 function handleHistoryScroll(event: Event): void {
@@ -515,11 +558,11 @@ function getEmptyDescription(): string {
                 </div>
 
                 <p
-                  v-if="task.status === 'failed' && task.error"
+                  v-if="task.status === 'failed' && getErrorText(task)"
                   class="error-reason"
-                  :title="task.error"
+                  :title="getErrorText(task)"
                 >
-                  {{ task.error }}
+                  {{ getErrorText(task) }}
                 </p>
 
                 <div v-if="task.status === 'processing'" class="progress-bar">
@@ -540,6 +583,16 @@ function getEmptyDescription(): string {
                   @click.stop="runCardAction('useParams', task)"
                 >
                   <PhPencilSimple />
+                </button>
+                <button
+                  v-if="isCancellable(task)"
+                  class="action-btn danger"
+                  :disabled="cancellingTaskIds.includes(task.id)"
+                  :title="$t('common.cancel')"
+                  :aria-label="$t('common.cancel')"
+                  @click.stop="handleCancelTask(task)"
+                >
+                  <PhX />
                 </button>
                 <button
                   v-if="task.status === 'completed'"
@@ -1271,9 +1324,20 @@ function getEmptyDescription(): string {
   color: var(--color-text-primary);
 }
 
-.action-btn.danger:hover {
+.action-btn.danger:hover:not(:disabled) {
   background: var(--color-danger-bg);
   color: var(--color-text-primary);
+}
+
+.action-btn:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+/* 还在出图的卡片把动作列常驻：取消按钮藏在 hover 里等于没有 */
+.history-card.processing .action-column,
+.history-card.processing .action-column.gallery {
+  opacity: 1;
 }
 
 .empty-state {

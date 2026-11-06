@@ -4593,8 +4593,6 @@ export default {
         youtubeLabel: 'YouTube URL',
         youtubeHint: '输入 YouTube 视频链接',
         bilibiliLabel: 'Bilibili URL',
-        bilibiliHint:
-          '输入 Bilibili 视频链接，将自动公开分析视频内容，该功能为第三方提供的实验功能，不保证可用性',
         wechatLabel: '微信公众号文章链接',
         wechatHint: '输入微信公众号文章链接，将自动提取文章内容并转换为 Markdown 格式'
       },
@@ -5160,8 +5158,9 @@ export default {
     colInfo: '信息',
     colTags: '标签',
     loading: '加载中…',
-    emptyTitle: '用于存放可复用的资产',
-    emptyHint: '新建条目，或将文件拖入左侧文件夹',
+    emptyTitle: '{library}为空',
+    emptyFolderTitle: '这个文件夹是空的',
+    filteredEmptyTitle: '没有符合条件的条目',
     clearSearch: '清除搜索',
     folderSection: '文件夹',
     createFolder: '新建文件夹',
@@ -5351,6 +5350,9 @@ export default {
     }
   },
   aigcImageHistoryPanel: {
+    error: {
+      cancelledByUser: '生成已取消'
+    },
     status: {
       generating: '生成中 {progress}%',
       pending: '排队中',
@@ -6845,18 +6847,15 @@ export default {
   },
   screenRecorderExportPanel: {
     title: '录制导出',
-    subtitleFallback: '剪辑与导出设置',
     resetButton: '重置',
     exportButton: '导出',
     previewSectionTitle: '预览',
     noFileTitle: '未选择录制文件',
-    noFileDesc: '请先完成录制或传入视频地址',
     trimRangeTitle: '剪辑区间',
     startLabel: '起点',
     endLabel: '终点',
     trimDurationLabel: '剪辑时长',
     exportFormatTitle: '导出格式',
-    gifDesc: 'GIF 体积更小但不包含音频',
     qualityLabel: '质量',
     qualityOptions: {
       high: '高',
@@ -6871,9 +6870,7 @@ export default {
     bitrateLabel: '码率',
     advancedSettingsTitle: '高级设置',
     includeAudioTitle: '包含音频',
-    includeAudioDesc: '仅 MP4 可用',
     highQualityScaleTitle: '高质量缩放',
-    highQualityScaleDesc: '保持清晰度与细节',
     summaryTitle: '导出摘要',
     summaryFormat: '格式',
     summaryDuration: '时长',
@@ -7775,7 +7772,11 @@ export default {
       }
     },
     scan: {
-      done: '扫描完成'
+      done: '扫描完成',
+      partial: '扫描完成，{count} 个目录无法读取'
+    },
+    aiNaming: {
+      noVisionModel: '没有能看图的模型，请在 设置 → 模型 中为「图片理解」绑定一个模型'
     },
     folder: {
       unknownFolder: '未知文件夹',
@@ -8287,21 +8288,6 @@ export default {
     defaultGraph: {
       name: '新事件图表',
       description: '默认事件图表'
-    },
-    /*
-     * 空库时塞进去的四条示例蓝图。
-     *
-     * 英文用户第一次打开蓝图库，看到的四条示例全是中文描述。
-     * （「要不要有示例数据」是另一个问题，见评审 4.6；这里只负责别让它只有中文。）
-     */
-    samples: {
-      damageSystem: '通用伤害计算系统，支持物理和魔法伤害',
-      calculateDamage: '计算最终伤害值',
-      damageMultiplier: '伤害倍率',
-      isActive: '是否激活',
-      characterController: '角色移动控制蓝图，包含跳跃、冲刺、攀爬',
-      mainMenu: '主菜单 UI 蓝图',
-      networkManager: '网络同步管理器'
     }
   },
   miniChatWindow: {

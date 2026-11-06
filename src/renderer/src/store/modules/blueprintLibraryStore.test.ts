@@ -104,6 +104,14 @@ describe('blueprintLibrary store editor view state', () => {
     })
   })
 
+  // 曾经 store 初始化时会播种一批示例蓝图，用户第一次进蓝图库看到的是四条假数据，
+  // 删掉之后还会自己长回来。这条用例把「空库启动后仍然是空的」钉住。
+  it('空库启动后不会自己长出条目', async () => {
+    const store = useBlueprintLibraryStore()
+    await store.ready
+    expect(store.blueprints).toHaveLength(0)
+  })
+
   it('toggles a blueprint favorite on and off', () => {
     const store = useBlueprintLibraryStore()
     const actor = store.createBlueprint({

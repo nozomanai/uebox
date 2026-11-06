@@ -85,6 +85,58 @@ export interface VaultEntry {
   credentials: VaultCredentials
 }
 
+/** 文件系统扫描的实现 */
+export type VaultScanHandler = (vault: VaultEntry) => Promise<Record<string, unknown>>
+
+let sharedScanHandler: VaultScanHandler | null = null
+
+/**
+ * 注册文件系统扫描实现，由 IPC 层在注册 `networkVaultV2:*` 通道时调用一次。
+ *
+ * 扫描逻辑住在 IPC 层（它持有资产解析器、缩略图这些依赖），AssetServer 在收到
+ * POST /scan 时才去取当前注册的那一个 —— **不能改成在 Server 启动处注入**：
+ * 启动时 `initDatabase()` → `switchToVault()` 就把 Server 拉起来了，比
+ * `registerAllIPC()` 早，按启动时点注入的话那台 Server 永远没有扫描实现，
+ * 可写客户端点「刷新」只会收到 501「扫描功能未配置」。
+ */
+export function registerVaultScanHandler(handler: VaultScanHandler): void {
+  sharedScanHandler = handler
+}
+
+/** 当前注册的扫描实现；没有注册过时为 null（POST /scan 回 501） */
+export function getVaultScanHandler(): VaultScanHandler | null {
+  return sharedScanHandler
+}
+
+/** 同一保管库已有扫描在跑时抛出；HTTP 层据此回 409 */
+export class VaultScanBusyError extends Error {
+  constructor() {
+    super('上一次扫描尚未结束')
+    this.name = 'VaultScanBusyError'
+  }
+}
+
+const runningScans = new Set<string>()
+
+/**
+ * 同一保管库同时只跑一次扫描。
+ *
+ * 这把锁必须在扫描实现里取，不能只拦 HTTP 请求：本机主机用户走 IPC
+ * `networkVaultV2:scan`，远程客户端走 POST /scan，两条路径进的是同一个
+ * 扫描实现。只拦一边的话，两个用户同时点「刷新」会各自把同一个文件入一遍库
+ * —— 去重快照在扫描开头一次读完，`assetKey` 每次新生成，同一文件留下两条
+ * assetData，事后只能人工清。
+ */
+export async function withVaultScanLock<T>(vaultId: string, run: () => Promise<T>): Promise<T> {
+  if (runningScans.has(vaultId)) throw new VaultScanBusyError()
+  runningScans.add(vaultId)
+  try {
+    return await run()
+  } finally {
+    runningScans.delete(vaultId)
+  }
+}
+
 const PERMISSION_RANK: Record<PermissionLevel, number> = {
   readonly: 0,
   readwrite: 1,
@@ -111,8 +163,6 @@ export class AssetServer {
   private cleanupTimer: ReturnType<typeof setInterval> | null = null
   private backupTimer: ReturnType<typeof setInterval> | null = null
   private _isRunning = false
-  private scanHandler: ((vault: VaultEntry) => Promise<Record<string, unknown>>) | null = null
-  private scanLocks = new Set<string>()
   // WS 日志节流：per-client 在短时间内只输出一次，避免重连风暴时刷屏
   private wsLogThrottle: Map<string, number> = new Map()
   private static readonly WS_LOG_INTERVAL_MS = 5000
@@ -204,11 +254,6 @@ export class AssetServer {
     })
     toRemove.forEach((key) => this.wsClients.delete(key))
     console.log(`[AssetServer] 注销 Vault: ${vaultId}`)
-  }
-
-  /** 设置扫描处理回调（由 IPC 层注入，复用 networkVaultV2:scan 的逻辑） */
-  setScanHandler(handler: (vault: VaultEntry) => Promise<Record<string, unknown>>): void {
-    this.scanHandler = handler
   }
 
   async start(): Promise<number> {
@@ -1020,30 +1065,28 @@ export class AssetServer {
     // ─── 文件系统扫描 ───
 
     if (method === 'POST' && subPath === '/scan') {
-      if (!this.scanHandler) {
+      // 每次请求现取：Server 可能比 IPC 注册更早起来（见 registerVaultScanHandler）
+      const scanHandler = getVaultScanHandler()
+      if (!scanHandler) {
         this.sendJson(res, 501, { success: false, error: '扫描功能未配置' })
         return
       }
 
-      // 互斥锁
-      if (this.scanLocks.has(vault.vaultId)) {
-        this.sendJson(res, 409, { success: false, error: '扫描正在进行中，请稍后再试' })
-        return
-      }
-
-      this.scanLocks.add(vault.vaultId)
-      this.scanHandler(vault)
+      // 互斥锁在扫描实现里（withVaultScanLock），本机 IPC 那条路径共用同一把；
+      // 这里只负责把「已有扫描在跑」翻成 409
+      scanHandler(vault)
         .then((result) => {
           this.sendJson(res, 200, { success: true, data: result })
         })
         .catch((err) => {
+          if (err instanceof VaultScanBusyError) {
+            this.sendJson(res, 409, { success: false, error: err.message })
+            return
+          }
           this.sendJson(res, 500, {
             success: false,
             error: `扫描失败: ${err instanceof Error ? err.message : String(err)}`
           })
-        })
-        .finally(() => {
-          this.scanLocks.delete(vault.vaultId)
         })
       return
     }

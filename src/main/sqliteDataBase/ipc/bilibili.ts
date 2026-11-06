@@ -1,16 +1,15 @@
 /**
  * Bilibili 视频分析 IPC 处理器
- * 用于在主进程中调用服务端 API 分析 Bilibili 视频内容
+ * 用于在主进程中分析 Bilibili 视频内容
  * 供知识库添加 Bilibili 来源使用
  */
 import { ipcMain } from 'electron'
 import {
-  extractRealVideoUrl,
   isValidBilibiliUrl,
   resolveBilibiliVideoUrl
 } from '../../services/videoAnalysis/bilibiliVideoSource'
 export { resolveBilibiliVideoUrl } from '../../services/videoAnalysis/bilibiliVideoSource'
-import { VISION_KEY_HINT, analyzeUrl } from '../../services/dashscope/urlAnalyzer'
+import { analyzeVideoSource } from '../../services/videoAnalysis/videoSourceAnalysis'
 
 /**
  * 正在分析中的任务 Map（按 URL 去重）
@@ -20,6 +19,19 @@ import { VISION_KEY_HINT, analyzeUrl } from '../../services/dashscope/urlAnalyze
 const pendingAnalysisTasks = new Map<string, Promise<BilibiliAnalyzeResult>>()
 
 /**
+ * 分析进度推给发起那个窗口的通道。整条链要解析链接、下载、可能压一遍、再等模型，
+ * 最坏好几分钟，不报一句界面上就只有一行转圈的
+ */
+const ANALYZE_PROGRESS_CHANNEL = 'bilibili:analyzeProgress'
+
+/**
+ * URL 不是 B 站视频页时给的话。
+ * TODO: 和 `videoAnalysis/bilibiliVideoSource.ts` 里那句是同一句，等那个文件
+ * 导出常量之后两边共用，免得两处字面量各自漂移。
+ */
+const INVALID_URL_ERROR = '请提供有效的 Bilibili 视频 URL'
+
+/**
  * Bilibili 分析请求参数接口
  */
 interface BilibiliAnalyzeParams {
@@ -27,7 +39,6 @@ interface BilibiliAnalyzeParams {
   url: string
   /** 自定义分析提示词（可选） */
   prompt?: string
-  /** 认证 Token */
 }
 
 /**
@@ -37,12 +48,8 @@ interface BilibiliAnalyzeResult {
   success: boolean
   /** 分析结果（Markdown 格式） */
   content?: string
-  /** 视频标题 */
-  title?: string
   /** Bilibili 视频 ID (BV号) */
   videoId?: string
-  /** 真实视频地址 */
-  realUrl?: string
   /** 错误信息 */
   error?: string
 }
@@ -140,15 +147,18 @@ function extractBvid(url: string): string | null {
 }
 
 /**
- * 调用服务端 Bilibili 分析 API
+ * 分析 Bilibili 视频（同一个 URL 并发时复用同一次分析）
  */
-async function analyzeBilibiliVideo(params: BilibiliAnalyzeParams): Promise<BilibiliAnalyzeResult> {
+async function analyzeBilibiliVideo(
+  params: BilibiliAnalyzeParams,
+  onProgress?: (note: string) => void
+): Promise<BilibiliAnalyzeResult> {
   const { url, prompt } = params
 
   if (!url || typeof url !== 'string') {
     return {
       success: false,
-      error: '请提供有效的 Bilibili 视频 URL'
+      error: INVALID_URL_ERROR
     }
   }
 
@@ -160,7 +170,7 @@ async function analyzeBilibiliVideo(params: BilibiliAnalyzeParams): Promise<Bili
   }
 
   // 创建新的分析任务
-  const analysisTask = doAnalyzeBilibiliVideo(url, prompt)
+  const analysisTask = doAnalyzeBilibiliVideo(url, prompt, onProgress)
 
   // 加入 pending map
   pendingAnalysisTasks.set(url, analysisTask)
@@ -178,40 +188,42 @@ async function analyzeBilibiliVideo(params: BilibiliAnalyzeParams): Promise<Bili
  */
 async function doAnalyzeBilibiliVideo(
   url: string,
-  prompt?: string
+  prompt?: string,
+  onProgress?: (note: string) => void
 ): Promise<BilibiliAnalyzeResult> {
   console.log('[BilibiliIPC] 开始分析视频:', url)
 
-  // 1. 先在客户端获取真实视频地址
-  console.log('[BilibiliIPC] 正在获取视频真实地址...')
-  const realUrl = await extractRealVideoUrl(url)
-
-  if (!realUrl) {
+  if (!isValidBilibiliUrl(url)) {
     return {
       success: false,
-      error: '无法获取视频真实地址，可能视频不存在或受限'
+      error: INVALID_URL_ERROR
     }
   }
 
-  console.log('[BilibiliIPC] 成功获取真实地址，开始分析...')
+  // 整条链交给统一入口：它解析直链、带 Referer 下到临时文件、送模型、读完删文件。
+  // 直链**不能**转手给模型厂商去 fetch —— B 站 CDN 靠 Referer 挡站外访问，
+  // 厂商那边发不出这个头，拿到的一律是 403。
+  const analyzed = await analyzeVideoSource({
+    source: url,
+    ...(prompt ? { prompt } : {}),
+    ...(onProgress ? { onProgress } : {})
+  })
 
-  const bvid = extractBvid(url)
-
-  // 2. 拿到直链之后，剩下的就是普通的视频 URL 理解 —— 交给统一入口，
-  //    B 站在这一步没有任何特殊之处。换用别家视觉模型也只需要改那一处。
-  const local = await analyzeUrl(realUrl, prompt)
-  if (local.error !== VISION_KEY_HINT) {
-    if (!local.success) return { success: false, error: local.error }
+  if (!analyzed.success || !analyzed.markdown) {
     return {
-      success: true,
-      title: local.title,
-      videoId: bvid || undefined,
-      realUrl,
-      content: local.content
+      success: false,
+      // 模型答了但没写出东西时 `error` 是空的。至少说清是谁看的，
+      // 否则用户连该换哪个模型都不知道
+      error:
+        analyzed.error || (analyzed.model ? `${analyzed.model} 没有写出视频内容` : '视频分析失败')
     }
   }
 
-  return { success: false, error: VISION_KEY_HINT }
+  return {
+    success: true,
+    videoId: extractBvid(url) || undefined,
+    content: analyzed.markdown
+  }
 }
 
 /**
@@ -251,7 +263,7 @@ export function registerBilibiliIPC(): void {
    */
   ipcMain.handle(
     'bilibili:analyze',
-    async (_event, params: BilibiliAnalyzeParams): Promise<BilibiliAnalyzeResult> => {
+    async (event, params: BilibiliAnalyzeParams): Promise<BilibiliAnalyzeResult> => {
       console.log('[BilibiliIPC] 收到分析请求:', params?.url)
 
       if (!params || typeof params !== 'object') {
@@ -261,7 +273,13 @@ export function registerBilibiliIPC(): void {
         }
       }
 
-      return await analyzeBilibiliVideo(params)
+      // 进度只推给发起这次分析的那个窗口。同一个 URL 被复用时后来的调用方收不到
+      // 进度（`pendingAnalysisTasks` 复用的是第一次那条链），但结果照样等得到
+      const sender = event.sender
+      return await analyzeBilibiliVideo(params, (note) => {
+        if (sender.isDestroyed()) return
+        sender.send(ANALYZE_PROGRESS_CHANNEL, { url: params.url, note })
+      })
     }
   )
 

@@ -1,15 +1,14 @@
 <script setup lang="ts">
 /**
- * 库整个是空的时候显示的引导块。
+ * 一条都没有的时候显示的空状态。
  *
- * 语气按规范走「邀请」而不是「道歉」：标题说这块地方是干什么的，
- * 副文案说下一步做什么，不要「这里什么都没有」。
+ * 只有一句标题，不配说明性小字：「新建」就在工具栏上，再写一遍
+ * 「新建条目，或将文件拖入左侧文件夹」只是把用户已经看得见的东西念一遍。
+ * 要放补充操作的，用默认插槽放按钮。
  */
 defineProps<{
-  /** 标题，如「材质库还是空的」 */
+  /** 一句话说清是谁空了，如「蓝图库为空」 */
   title: string
-  /** 一句话说明下一步 */
-  hint: string
 }>()
 </script>
 
@@ -23,7 +22,6 @@ defineProps<{
       </svg>
     </div>
     <h2>{{ title }}</h2>
-    <p>{{ hint }}</p>
     <slot />
   </div>
 </template>
@@ -51,17 +49,9 @@ defineProps<{
 }
 
 h2 {
-  margin: 0 0 var(--space-2);
+  margin: 0;
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
-}
-
-p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--color-text-muted);
-  max-width: 380px;
-  line-height: var(--line-height-normal);
 }
 </style>

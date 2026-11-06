@@ -36,6 +36,7 @@ import {
 } from '@renderer/services/notebookContent/SourceSummarizer'
 import { getFormattedErrorMessage } from '@renderer/utils/errorMessage'
 import { buildNotebookListRoute } from '@renderer/views/Notebook/utils/notebookTabRoute'
+import { isBilibiliVideoUrl } from '@core/shared/bilibiliUrl'
 
 const router = useRouter()
 const route = useRoute()
@@ -828,7 +829,8 @@ const retrySource = async (sourceId: string): Promise<void> => {
         updateSource(
           sourceId,
           {
-            title: biliResult.title || source.title,
+            // 标题来自 `bilibili:fetchInfo` 那一步，分析本身不再回标题
+            title: source.title,
             content: biliResult.content,
             loading: false,
             error: null
@@ -1531,13 +1533,12 @@ const handleAddSource = async (payload: SourcePayload): Promise<void> => {
         payload.type = 'youtube'
       }
 
-      // 检测 Bilibili URL
-      const isBilibili =
-        urlObj.hostname === 'www.bilibili.com' ||
-        urlObj.hostname === 'bilibili.com' ||
-        urlObj.hostname === 'm.bilibili.com'
-
-      if (isBilibili) {
+      // 检测 Bilibili 视频页。
+      //
+      // 判定走 `shared/bilibiliUrl`，和主进程 `isValidBilibiliUrl` 是同一份：这边判宽一点，
+      // 多出来的那些链接就会走视频分析、撞一句「请提供有效的 Bilibili 视频 URL」结束，
+      // 用户没有任何办法把它们当普通网页加进来。认不出是视频就留在 link，交给 webRead 读。
+      if (isBilibiliVideoUrl(urlObj.href)) {
         console.log('[NotebookDetail] Detected Bilibili URL, switching type to bilibili')
         payload.type = 'bilibili'
       }
@@ -1760,7 +1761,8 @@ const handleAddSource = async (payload: SourcePayload): Promise<void> => {
         updateSource(
           sourceId,
           {
-            title: result.title || initialTitle,
+            // 标题在上面 `bilibili:fetchInfo` 那一步就定了，分析本身不再回标题
+            title: initialTitle,
             content: result.content,
             loading: false,
             error: null

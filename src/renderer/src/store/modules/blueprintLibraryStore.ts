@@ -7,7 +7,6 @@ import { ref, computed } from 'vue'
 import type {
   Blueprint,
   BlueprintType,
-  BlueprintStatus,
   BlueprintGraph,
   BlueprintFunction,
   BlueprintVariable,
@@ -18,7 +17,6 @@ import type {
   BlueprintElementType
 } from '@renderer/views/BlueprintLibrary/types/blueprint'
 import type { BrowserViewMode } from '@renderer/views/library-common/browser/types'
-import { SAMPLE_EVENT_GRAPH_CODE } from '@renderer/views/BlueprintLibrary/constants/sampleBlueprintCode'
 import { extractFunctionSignatureFromCode } from '@renderer/views/BlueprintLibrary/utils/blueprintCodeParser'
 import { createLibraryPackagePersistence, parseUiPrefs } from './libraryPackagePersistence'
 import { clearLegacyLocalStorage, readLegacyLibrarySnapshot } from './libraryLegacyRead'
@@ -690,90 +688,12 @@ export const useBlueprintLibraryStore = defineStore('blueprintLibrary', () => {
     persistState()
   }
 
-  // ========== Mock 数据 ==========
-
-  function loadMockData(): void {
-    if (blueprints.value.length > 0) return
-    const now = Date.now()
-
-    const mockBp1 = createBlueprint({
-      name: 'BP_DamageSystem',
-      blueprintType: 'BlueprintClass',
-      engineVersion: '5.4',
-      description: t('blueprintLibraryStore.samples.damageSystem'),
-      tags: ['combat', 'damage']
-    })
-    // 给 mock 蓝图添加一些内部元素
-    addFunction(mockBp1.id, {
-      name: 'CalculateDamage',
-      inputs: [
-        { name: 'BaseDamage', type: 'Float' },
-        { name: 'DamageType', type: 'Enum' }
-      ],
-      outputs: [{ name: 'FinalDamage', type: 'Float' }],
-      code: '',
-      description: t('blueprintLibraryStore.samples.calculateDamage'),
-      isPure: true,
-      access: 'public'
-    })
-    addVariable(mockBp1.id, {
-      name: 'DamageMultiplier',
-      type: 'Float',
-      defaultValue: '1.0',
-      isEditable: true,
-      isBlueprintReadOnly: false,
-      isExposedOnSpawn: false,
-      category: 'Damage',
-      description: t('blueprintLibraryStore.samples.damageMultiplier'),
-      replication: 'none'
-    })
-    addVariable(mockBp1.id, {
-      name: 'bIsActive',
-      type: 'Boolean',
-      defaultValue: 'true',
-      isEditable: true,
-      isBlueprintReadOnly: false,
-      isExposedOnSpawn: true,
-      category: 'State',
-      description: t('blueprintLibraryStore.samples.isActive'),
-      replication: 'replicated'
-    })
-
-    createBlueprint({
-      name: 'BP_CharacterController',
-      blueprintType: 'BlueprintClass',
-      engineVersion: '5.4',
-      description: t('blueprintLibraryStore.samples.characterController'),
-      tags: ['movement', 'character']
-    })
-
-    createBlueprint({
-      name: 'WBP_MainMenu',
-      blueprintType: 'WidgetBlueprint',
-      engineVersion: '5.4',
-      description: t('blueprintLibraryStore.samples.mainMenu'),
-      tags: ['UI', 'menu']
-    })
-
-    createBlueprint({
-      name: 'BP_NetworkManager',
-      blueprintType: 'GameModeBlueprint',
-      engineVersion: '5.4',
-      description: t('blueprintLibraryStore.samples.networkManager'),
-      tags: ['network', 'multiplayer']
-    })
-  }
-
   // 初始化
   //
   // 读库是异步的，但两个库的路由在进入之前会 await 这个 ready（见 mainRoutes.ts），
   // 所以组件仍然是「一挂载数据就在」，视图代码不需要动。
   loadCreateModalSettings()
-  const ready = persistence.ready.then(() => {
-    if (blueprints.value.length === 0) {
-      loadMockData()
-    }
-  })
+  const ready = persistence.ready
 
   /*
    * 主进程往包目录写了一条（`blueprint_library_save`）—— 把**那一条**并进来。

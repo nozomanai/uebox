@@ -289,14 +289,17 @@ export function registerLegacyImportIPC(): void {
     }
   })
 
-  ipcMain.handle('legacy:import-assets', async (_event, dbPath: string) => {
+  // 读旧版 bluePrint 表的全部行，不按类型过滤。
+  // 旧版把蓝图节点和材质节点混在这一张表里，材质库要的那批正好是
+  // legacy:import-blueprints 过滤掉的那批，所以材质侧走这条、自己分类。
+  ipcMain.handle('legacy:read-all-nodes', async (_event, dbPath: string) => {
     try {
       if (!dbPath || !existsSync(dbPath)) {
         throw new Error(`数据库文件不存在: ${dbPath}`)
       }
       return readLegacyDatabaseRaw(dbPath)
     } catch (err) {
-      console.error('[LegacyImport] import-assets 失败:', err)
+      console.error('[LegacyImport] read-all-nodes 失败:', err)
       throw err
     }
   })

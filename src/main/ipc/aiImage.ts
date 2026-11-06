@@ -133,13 +133,18 @@ export function registerAiImageIPC(): void {
   })
 
   /**
-   * 取消图片生成任务
+   * 取消图片生成任务。
+   *
+   * `found` 是取消那一刻主进程有没有在跑这条任务。`false` 不代表取消落空 ——
+   * 任务 ID 已经记在主进程里，登记完会自己停掉（见 `cancelImageTask`）。
+   * 以前这里无条件回 `success: true`，而查不到任务时主进程什么都不做，
+   * 于是刚起的任务上按取消会「报成功、图照出」。
    */
   ipcMain.handle('image:cancelTask', async (_, taskId: string) => {
     try {
       const { imagePollingService } = await import('../services/imagePollingService')
-      imagePollingService.cancelTask(taskId)
-      return { success: true }
+      const { found } = imagePollingService.cancelTask(taskId)
+      return { success: true, found }
     } catch (error) {
       console.error('[image:cancelTask] 失败:', error)
       return { success: false, error: error instanceof Error ? error.message : String(error) }

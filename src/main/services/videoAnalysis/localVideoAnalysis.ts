@@ -8,9 +8,12 @@ import { resolveProviderApiKey } from '../../ai/providerKey'
  * 用户自己配了 Key，就没有理由再绕一圈。
  *
  * **只有 YouTube 需要单独一份**，因为 youtube.com 的链接只有 Gemini 能直接吃
- * （`fileData.fileUri`）。B 站不需要：它在 `ipc/bilibili.ts` 里解析出真实播放
- * 地址之后，剩下的就是普通的视频 URL 理解，走 `urlAnalyzer.analyzeUrl` 即可 ——
- * 那里本来就有这条路，早先这里又写了一遍。
+ * （`fileData.fileUri`）。
+ *
+ * 其余远端视频一律由 `videoAnalysis/videoSourceAnalysis.ts` 下到本地再发，
+ * 别把直链交给 `analyzeUrl`：B 站 CDN 靠 Referer 挡站外访问，模型厂商那边
+ * 发不出这个头，拿到的一律是 403；Gemini 的 `fileData.fileUri` 也只收
+ * Files API 的 URI 和 YouTube 链接，别的 https 地址会被 400 顶回来。
  */
 
 /** 内置目录里的 provider id */

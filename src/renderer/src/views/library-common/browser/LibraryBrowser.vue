@@ -152,6 +152,30 @@ const selection = computed(() =>
   visibleItems.value.filter((item) => selectedIds.value.includes(item.id))
 )
 
+/** 用户此刻有没有在缩小范围。点文件夹不算 —— 它是浏览位置，不是筛选条件 */
+const hasQuery = computed(
+  () => keyword.value.trim().length > 0 || Object.values(facetValues.value).some((value) => value)
+)
+
+/**
+ * 一条都不剩有三种原因，该说的话不一样：
+ *
+ *   1. 库里本来就什么都没有 —— 用户该去新建。标题带上 `scope.title`，
+ *      所以蓝图库说「蓝图库」、材质库说「材质库」，这一个壳不用为两个库各写一套文案。
+ *   2. 库里有东西，但用户点开的那个文件夹里没有 —— 用户该去换个文件夹。
+ *   3. 搜索或筛选把东西筛没了 —— 用户该去放宽条件。
+ *
+ * 第 2 种以前和第 3 种共用一句话，于是什么都没搜、只是点了个空文件夹的人
+ * 会读到「没有符合条件的条目」—— 他一个条件都没设。
+ */
+const emptyTitle = computed(() => {
+  if (scopedItems.value.length === 0) {
+    return t('libraryBrowser.emptyTitle', { library: t(props.scope.title) })
+  }
+  if (!hasQuery.value && folderKey.value) return t('libraryBrowser.emptyFolderTitle')
+  return t('libraryBrowser.filteredEmptyTitle')
+})
+
 /**
  * 界面重量。不填按 full —— 新加一个库时先给它完整的，
  * 觉得太重了再显式降级，比反过来安全。
@@ -458,22 +482,18 @@ function onSidebarResizeStart(e: MouseEvent): void {
           <LibrarySkeletonCard v-for="n in SKELETON_COUNT" :key="n" />
         </LibraryGrid>
 
-        <LibraryEmptyState
-          v-else-if="visibleItems.length === 0"
-          :title="t('libraryBrowser.emptyTitle')"
-          :hint="t('libraryBrowser.emptyHint')"
-        />
+        <LibraryEmptyState v-else-if="visibleItems.length === 0" :title="emptyTitle" />
 
         <!--
           列表模式走真正的表格（表头 + 固定行高 + 六列，裁决 #16–#19），
           不是把网格压成一列 —— 压成一列的话「列表」除了更窄没有任何好处。
         -->
-        <LibraryListTable
-          v-else-if="viewMode === 'list'"
-          :columns="listColumns"
-          :empty-text="t('libraryBrowser.emptyTitle')"
-          :is-empty="false"
-        >
+        <!--
+          不传 empty-text / is-empty：上面那条 v-else-if 已经把「一条都没有」接走了，
+          走到这里时表里一定有行。传一句永远显示不出来的空文案，只会让下一个人
+          以为表格自己会处理空态。
+        -->
+        <LibraryListTable v-else-if="viewMode === 'list'" :columns="listColumns">
           <div
             v-for="item in visibleItems"
             :key="item.id"

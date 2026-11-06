@@ -24,7 +24,8 @@ export interface LegacyNodeRow {
   folderKey: string
   bluePrintKey: string
   name: string
-  code: string
+  /** 旧库里这一列允许为空，不筛类型的通道会把 NULL 原样交过来 */
+  code: string | null
   type: string
   note: string
   color: string
@@ -103,8 +104,21 @@ export async function selectLegacyDb(): Promise<string | null> {
   return window.electron.ipcRenderer.invoke('legacy:select-db')
 }
 
+/**
+ * 主进程已经按蓝图类型筛过一遍的行。蓝图库用这一条。
+ */
 export async function readLegacyNodes(dbPath: string): Promise<LegacyReadResult> {
   return window.electron.ipcRenderer.invoke('legacy:import-blueprints', dbPath)
+}
+
+/**
+ * 旧版表里的全部行，主进程不做类型筛选，由调用方自己分类。
+ *
+ * 材质库用这一条：`legacy:import-blueprints` 筛掉的正是材质节点和材质函数，
+ * 从那条通道读永远拿不到材质。
+ */
+export async function readAllLegacyNodes(dbPath: string): Promise<LegacyReadResult> {
+  return window.electron.ipcRenderer.invoke('legacy:read-all-nodes', dbPath)
 }
 
 // ==================== 共用工具 ====================
@@ -112,8 +126,14 @@ export async function readLegacyNodes(dbPath: string): Promise<LegacyReadResult>
 /**
  * 旧版没有「这是蓝图还是材质」的字段，只能从 T3D 代码里认。
  * 两个库共用这一份判断，免得各认各的、同一行被两边都收下或都漏掉。
+ *
+ * `code` 收 `null`：旧库里确实有 code 为空的行（旧的蓝图通道在主进程里就
+ * 用 `bp.code && ...` 把它们滤掉了），而不筛类型的 `readAllLegacyNodes`
+ * 会原样带上来。默认参数只挡 `undefined`，`null.trim()` 当场抛 TypeError，
+ * 一条这样的行就让整个导入预览报错。
  */
-export function detectLegacyNodeType(code = ''): string {
+export function detectLegacyNodeType(code?: string | null): string {
+  if (!code) return '脚本代码'
   if (code.trim().startsWith('BPGraph(')) return '蓝图函数'
   if (code.includes('MaterialExpressionFunctionOutput')) return '材质函数'
   if (code.includes('MaterialGraph')) return '材质节点'

@@ -9,6 +9,11 @@
 import https from 'https'
 import http from 'http'
 import { URL } from 'url'
+import { resolveProviderApiKey } from '../../ai/providerKey'
+import { BAILIAN_KEY_MISSING_ERROR } from './imageAnalyzer'
+
+/** 内置目录里阿里云百炼的 provider id */
+const ALIBABA_PROVIDER_ID = 'alibaba'
 
 /**
  * 视频分析结果接口
@@ -145,14 +150,21 @@ export async function analyzeVideoUrl(
     prompt?: string
   }
 ): Promise<VideoAnalysisResult> {
-  const apiKey = options?.apiKey || process.env.QWEN_API_KEY
+  /*
+    Key 正常由 `urlAnalyzer` 解析好传进来。这里的兜底读的是用户在 设置 → 模型 里
+    配的百炼服务商（开发环境再兜底到 `DASHSCOPE_API_KEY`，名字跟着 `.env.example`）——
+    原先兜底读的是 `process.env.QWEN_API_KEY`：打包版里 `.env` 不进 asar，那个变量
+    不存在，于是只会得到一句「请在 .env 文件中设置」，而用户手上没有 .env 可改。
+  */
+  const apiKey =
+    options?.apiKey || (await resolveProviderApiKey(ALIBABA_PROVIDER_ID, 'DASHSCOPE_API_KEY'))
   const modelName = options?.modelName || DEFAULT_VL_MODEL
   const prompt = options?.prompt || DEFAULT_VIDEO_PROMPT
 
   if (!apiKey) {
     return {
       success: false,
-      error: '未配置 Qwen API Key，请在 .env 文件中设置 QWEN_API_KEY'
+      error: BAILIAN_KEY_MISSING_ERROR
     }
   }
 
