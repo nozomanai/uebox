@@ -253,7 +253,7 @@ describe('生图（04-images）', () => {
     settings.roles = { image: { providerId: 'creator-plan-image', modelId: 'uebox-image' } }
   })
 
-  it('JSON 带 image_urls（https 原样、裸 base64 转 data URI）、size 档位、aspect_ratio；按 mime_type 取图', async () => {
+  it('带参考图打 /images/edits（multipart，每张一个 image[]），档位按比例换成像素；按 mime_type 取图', async () => {
     const calls = stubFetch(() =>
       json({
         created: 1,
@@ -267,20 +267,17 @@ describe('生图（04-images）', () => {
       size: '2k',
       aspectRatio: '16:9',
       seed: 7,
-      referenceImages: ['https://cdn.example/ref.png', 'iVBORw0KGgo=']
+      referenceImages: ['data:image/jpeg;base64,/9j/', 'iVBORw0KGgo=']
     })
     expect(images).toEqual([{ base64: 'AAAA', mediaType: 'image/webp' }])
-    expect(calls[0].url).toBe(`${BASE}/images/generations`)
-    expect(calls[0].body).toEqual({
-      model: 'uebox-image',
-      prompt: '雨夜小巷',
-      n: 1,
-      size: '2K',
-      aspect_ratio: '16:9',
-      image_urls: ['https://cdn.example/ref.png', 'data:image/png;base64,iVBORw0KGgo='],
-      seed: 7,
-      response_format: 'b64_json'
-    })
+    expect(calls[0].url).toBe(`${BASE}/images/edits`)
+    const form = calls[0].init.body as FormData
+    expect(form.getAll('image[]')).toHaveLength(2)
+    expect(form.get('model')).toBe('uebox-image')
+    expect(form.get('n')).toBe('1')
+    expect(form.get('size')).toBe('2736x1536')
+    expect(form.has('image_urls')).toBe(false)
+    expect(form.has('aspect_ratio')).toBe(false)
   })
 
   it('202 任务单：轮询 GET /images/generations/{id}，成功后从 result 取图', async () => {

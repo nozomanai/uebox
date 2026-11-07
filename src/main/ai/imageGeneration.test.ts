@@ -1746,3 +1746,43 @@ describe('Codex 订阅出图', () => {
     expect(sent).toHaveLength(0)
   })
 })
+
+describe('Box Plan（uebox-images）', () => {
+  it('带参考图打 /images/edits，每张参考图一个 image[]，档位按比例换成像素', async () => {
+    useModel('uebox-images', 'gpt-image-2.6-flare')
+    await generateImages({
+      prompt: '把图1 的服装换到图2 的模特身上',
+      size: '4K',
+      aspectRatio: '9:16',
+      referenceImages: ['data:image/png;base64,AAAA', 'data:image/jpeg;base64,BBBB']
+    })
+    const request = lastRequest()
+    expect(request.url).toBe('https://gateway.example.com/v1/images/edits')
+    expect(request.form?.getAll('image[]')).toHaveLength(2)
+    expect(request.form?.get('model')).toBe('gpt-image-2.6-flare')
+    expect(request.form?.get('size')).toBe('2160x3840')
+    expect(request.form?.has('image_urls')).toBe(false)
+    expect(request.form?.has('response_format')).toBe(false)
+  })
+
+  it('没有参考图打 /images/generations，不发中转站不认的字段', async () => {
+    useModel('uebox-images', 'gpt-image-2.6-flare')
+    await generateImages({ prompt: 'x', size: '1K', aspectRatio: '16:9', seed: 7 })
+    const request = lastRequest()
+    expect(request.url).toBe('https://gateway.example.com/v1/images/generations')
+    expect(request.json).toEqual({
+      model: 'gpt-image-2.6-flare',
+      prompt: 'x',
+      n: 1,
+      size: '1360x768'
+    })
+  })
+
+  it('像素尺寸原样发，没给尺寸就不发', async () => {
+    useModel('uebox-images', 'gpt-image-2.6-flare')
+    await generateImages({ prompt: 'x', size: '1024x1536' })
+    expect(lastRequest().json.size).toBe('1024x1536')
+    await generateImages({ prompt: 'x' })
+    expect(lastRequest().json).not.toHaveProperty('size')
+  })
+})
