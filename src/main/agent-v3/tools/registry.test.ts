@@ -746,10 +746,8 @@ describe('listToolCatalog', () => {
   })
 
   // 默认常驻清单是这一页每个开关的起手状态，读错了用户看到的就是一页假开关
-  it('默认常驻状态跟着内置清单走', () => {
-    const byName = new Map(listToolCatalog().map((entry) => [entry.name, entry.defaultResident]))
-    expect(byName.get('ue_save')).toBe(true)
-    expect(byName.get('ue_spawn_actor')).toBe(false)
+  it('列出的工具默认都不常驻', () => {
+    expect(listToolCatalog().filter((entry) => entry.defaultResident)).toEqual([])
   })
 })
 

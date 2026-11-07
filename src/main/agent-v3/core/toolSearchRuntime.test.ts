@@ -188,6 +188,7 @@ describe('搜索模式真正进入 Agent 循环', () => {
     const { agent, tools } = await createUnrealAgent({
       ...base,
       toolSearchEnabled: true,
+      residentTools: { ue_save: true },
       approvalMode: 'ask',
       requestApproval
     })

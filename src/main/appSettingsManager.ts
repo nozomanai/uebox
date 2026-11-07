@@ -121,7 +121,7 @@ interface AppSettings {
    * 工具搜索模式下，偏离内置常驻清单的那些工具。`true` = 强行常驻，`false` = 改成搜索加载。
    *
    * 同样只存**差量**：内置常驻清单会随实验结论调整（见 `toolSearch.ts` 的
-   * `RESIDENT_TOOL_NAMES`），存全量的话，用户点过一次开关就永远停在那一版清单上。
+   * `DEFAULT_RESIDENT_NAMES`），存全量的话，用户点过一次开关就永远停在那一版清单上。
    */
   agentResidentTools: Record<string, boolean>
   /** 一轮跑完要不要弹系统通知。见 `TurnCompleteNotification` */

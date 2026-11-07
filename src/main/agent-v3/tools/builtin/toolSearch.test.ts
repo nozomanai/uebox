@@ -133,7 +133,7 @@ describe('Beta 工具搜索', () => {
     const a = tool('a', 'ue.material', 'a'.repeat(35000))
     const b = tool('b', 'ue.blueprint', 'b'.repeat(35000))
     const catalog = [resident, a, b]
-    const controller = createToolSearch(catalog, () => catalog)
+    const controller = createToolSearch(catalog, () => catalog, { ue_save: true })
     expect(controller.getTools()).toContain(resident)
     await search(controller, { names: ['a'] })
     await search(controller, { names: ['b'] })
@@ -231,12 +231,13 @@ describe('Beta 工具搜索', () => {
      * 于是模型再搜一次，正是要消灭的那种连发。
      */
     it('命中的常驻工具不占名额、不当分母，但仍然回在 loaded 里', async () => {
-      // `ue_save` 在内置常驻清单里；描述写得比折叠组更贴题，足以当头名
+      // `ue_save` 被用户设成常驻；描述写得比折叠组更贴题，足以当头名
       const withResident = [
         tool('ue_save', 'ue.editor', '整理 整理 整理 资产 资产 资产'),
         tool('content_organize', 'ue.content', '整理 资产')
       ]
       const controller = createToolSearch(withResident, () => withResident, {
+        ue_save: true,
         content_organize: false
       })
       const page = await search(controller, { query: '整理资产', limit: 1 })
@@ -249,7 +250,7 @@ describe('Beta 工具搜索', () => {
 
     it('只命中常驻工具时说清楚是「已经有了」，不说未命中', async () => {
       const onlyResident = [tool('ue_save', 'ue.editor', '保存 存盘')]
-      const controller = createToolSearch(onlyResident, () => onlyResident)
+      const controller = createToolSearch(onlyResident, () => onlyResident, { ue_save: true })
       const page = await search(controller, { query: '保存' })
       expect(page.addedToolNames).toEqual([])
       expect(page.loaded?.map((entry) => entry.name)).toEqual(['ue_save'])
@@ -268,27 +269,6 @@ describe('Beta 工具搜索', () => {
     expect(result.loaded).toHaveLength(6)
     expect(result.nextOffset).toBe(null)
     expect(controller.getTools()).toEqual(expect.arrayContaining(catalog))
-  })
-
-  /*
-   * 小组整组常驻，理由是 prompt cache 的账：常驻字节每轮只收 0.1×，而每加载
-   * 一组要全价重写一次前缀 —— 小组摊不平。算式见 `RESIDENT_TOOL_GROUPS`。
-   */
-  describe('整组常驻', () => {
-    it('组在名单里就首发，哪怕工具本身没被点名', () => {
-      const catalog = [tool('ue_restart_editor', 'ue.editor'), tool('material_write')]
-      const controller = createToolSearch(catalog, () => catalog)
-      expect(controller.getTools().map((entry) => entry.name)).toEqual([
-        'search_tools',
-        'ue_restart_editor'
-      ])
-    })
-
-    it('整组常驻仍然让位给用户的差量', () => {
-      const catalog = [tool('ue_restart_editor', 'ue.editor')]
-      const controller = createToolSearch(catalog, () => catalog, { ue_restart_editor: false })
-      expect(controller.getTools().map((entry) => entry.name)).toEqual(['search_tools'])
-    })
   })
 
   /*
@@ -365,15 +345,16 @@ describe('Beta 工具搜索', () => {
       const controller = createToolSearch(catalog, () => catalog, { material_write: true })
       expect(controller.getTools().map((entry) => entry.name)).toEqual([
         'search_tools',
-        'material_write',
-        'ue_save'
+        'material_write'
       ])
     })
 
     it('改成搜索加载的就不首发了，但仍然搜得回来', async () => {
-      const catalog = [tool('ue_save', 'ue.editor'), tool('ue_undo', 'ue.editor')]
-      const controller = createToolSearch(catalog, () => catalog, { ue_save: false })
-      expect(controller.getTools().map((entry) => entry.name)).toEqual(['search_tools', 'ue_undo'])
+      const catalog = [tool('voice_report', 'host'), tool('ue_save', 'ue.editor')]
+      const controller = createToolSearch(catalog, () => catalog, { voice_report: false })
+      expect(controller.getTools().map((entry) => entry.name)).toEqual(['search_tools'])
+      await search(controller, { names: ['voice_report'] })
+      expect(controller.getTools().map((entry) => entry.name)).toContain('voice_report')
       await search(controller, { names: ['ue_save'] })
       expect(controller.getTools().map((entry) => entry.name)).toContain('ue_save')
     })
@@ -390,10 +371,13 @@ describe('Beta 工具搜索', () => {
       ])
     })
 
-    it('没写差量的照旧按内置清单走', () => {
-      const catalog = [tool('ue_save', 'ue.editor'), tool('material_write')]
+    it('没写差量的照旧按内置清单走：只有宿主交互工具常驻', () => {
+      const catalog = [tool('voice_report', 'host'), tool('ue_save', 'ue.editor')]
       const controller = createToolSearch(catalog, () => catalog)
-      expect(controller.getTools().map((entry) => entry.name)).toEqual(['search_tools', 'ue_save'])
+      expect(controller.getTools().map((entry) => entry.name)).toEqual([
+        'search_tools',
+        'voice_report'
+      ])
     })
   })
 })

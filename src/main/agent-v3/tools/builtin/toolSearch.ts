@@ -6,7 +6,6 @@
 import { z } from 'zod'
 import type { AgentMessage } from '@earendil-works/pi-agent-core'
 import { defineTool, type ToolOutcome, type UnrealAgentTool } from '../defineTool'
-import { BROWSER_TOOL_NAMES } from '../toolNames'
 
 export const TOOL_SEARCH_NAME = 'search_tools'
 /*
@@ -25,130 +24,18 @@ export const TOOL_SEARCH_NAME = 'search_tools'
  */
 
 /**
- * docs/常驻工具集选定-2026-09-17.md §3。仅在原权限过滤后仍可用时常驻。
+ * 没人动过设置时常驻的工具：只有会话现造、设置页不列出的宿主交互工具。
  *
- * 末尾三个（`ue_get_actor` / `ue_screenshot` / `ue_playtest`）是 2026-09-17 按
- * **「完全没有替代、且高频」** 这条判据补进来的，见文档 §4.2 / §4.3 ——
- * 纯按频次性价比排，这三个都在边缘甚至落选（`ue_screenshot` 0.5 pp 每千 token）。
- * 换判据的理由有两条：
- *
- * 1. 频次数据本身可疑。那 166 个会话是开发期测试记录，重心在蓝图和材质，
- *    actor / 关卡那几路被系统性压低了（文档 §5.7）。「有没有替代品」不随测试重心漂移。
- * 2. `ue_get_actor` 是 09-11 的头号混淆磁铁（22 次误伸里 10 次指向它），
- *    但那是**描述写太宽**造成的，已按文档 §6.5 改掉。藏起来不会让误用消失，
- *    只会换个形式落到别的常驻工具头上。
+ * 2026-11-08 起设置页列出的工具默认全部按需加载（以前是文档 §3 点名的 30 个加
+ * 8 个整组常驻的小组，见 docs/常驻工具集选定-2026-09-17.md 和 git 历史）。
+ * 想常驻哪个，用户在「设置 → 工具」里自己打开，存在 `agentResidentTools`。
  */
-export const RESIDENT_TOOL_NAMES = [
-  'load_skill',
-  'ue_get_project_info',
-  'ue_content_search',
-  'ue_get_current_level',
-  'ue_session_health',
-  'read_skill_resource',
-  'project_list',
-  'list_engines',
-  'ue_get_selection',
-  'read_local_file',
-  'list_local_dir',
-  'grep_local_files',
-  'find_local_files',
-  'write_local_file',
-  'edit_local_file',
-  'web_search',
-  'web_read',
-  'ue_run_python_script',
-  'run_shell_command',
-  'ue_run_console_command',
-  'ue_save',
-  'ue_list_unsaved',
-  'ue_undo',
-  'ue_undo_history',
-  'search_assets',
-  'library_overview',
-  'task',
-  // 见上面文件注释：按「没有替代品」补入，不是按频次
-  'ue_get_actor',
-  'ue_screenshot',
-  'ue_playtest'
-] as const
-
-const CORE_NAMES = new Set<string>([
-  ...RESIDENT_TOOL_NAMES,
-  // 宿主交互能力按文档 §5.6 常驻；对话归属沿用首版 Beta 的常驻行为。
+const DEFAULT_RESIDENT_NAMES = new Set<string>([
   'ask_user',
   'voice_report',
   'set_session_project',
   'update_plan',
-  'wrap_up',
-  ...BROWSER_TOOL_NAMES
-])
-
-/**
- * 整组常驻的小组。2026-09-21 加。
- *
- * ## 这条线是怎么算出来的
- *
- * 折叠省的是**前缀字节**，但开了 prompt cache 之后前缀字节很便宜（首轮 1.25×
- * 写入，之后每轮 0.1× 读取），而**每加载一次组都让前缀变一次 = 作废整份缓存、
- * 全价重写一遍**。把一个组常驻 vs 折叠，跑一个 N 轮的会话：
- *
- * - 常驻：`1.25·g + 0.1·g·(N−1)`，N=10 时是 `2.15·g`
- * - 折叠且用到：比常驻多付 `1.25·P₀ − 0.1·g·(t−1)` ≈ `1.25·P₀`（P₀ 是底座前缀）
- *
- * 所以折叠划算的条件是 `p · 1.25·P₀ < (1−p) · g · 2.15`，其中 p 是「这个组在一条
- * 会话里被用到」的概率。P₀ ≈ 24,000 token 时右边那个阈值是 37,500 —— 一次加载事件
- * 顶得上 **17 轮**把这个组白带在前缀里。小组根本摊不平这笔钱。
- *
- * 逐组的盈亏平衡 p（`g × 2.15 / 37500`，g 取实测字节 ÷ 3.05 换成 token）。
- * **字节数测于 2026-09-21**，用 `TOOL_SEARCH_MEASURE=1` 跑
- * `toolSearchCatalog.test.ts` 的「记录各按需工具组的体积」可以复现 ——
- * 描述改一改这些数就会漂（本表成稿当天 `ue.sequencer` 就从 9,526 漂到 10,468），
- * 所以**重算这张表之前先重测一遍**，别拿今天的字节去比去年的行：
- *
- * | 组 | 字节 | 平衡 p | 取舍 |
- * |---|---:|---:|---|
- * | `local` | 1,129 | 2.1% | 常驻 |
- * | `mcp` | 3,187 | 6.0% | **留在折叠区**，见下 |
- * | `note` | 1,219 | 2.3% | 常驻 |
- * | `ue.mesh` | 1,309 | 2.5% | 常驻 |
- * | `ue.cpp` | 3,322 | 6.2% | 常驻 |
- * | `ue.animation` | 4,158 | 7.8% | 常驻 |
- * | `library` | 4,737 | 8.9% | 常驻 |
- * | `ue.input` | 5,331 | 10.0% | 常驻 |
- * | `ue.editor` | 6,098 | 11.5% | 常驻 |
- * | `ue.system` | 8,253 | 15.5% | **留在折叠区** |
- * | `video.production` | 9,521 | 17.9% | **留在折叠区** |
- * | `ue.sequencer` | 10,468 | 19.7% | **留在折叠区** |
- *
- * 线划在 6.1 KB 和 8.3 KB 之间，不是「小于 10 KB」这种整数 —— 上面三个的平衡 p
- * 已经进了 15%~20%，而 `ue.system` 在真实会话样本里是 12%（27/223 轮）。**它们是
- * 真正的边缘，留在折叠区等数据，不是被漏掉了。**
- *
- * `mcp`（2026-09-22 加）按平衡 p 排在 `ue.cpp` 和 `library` 之间，也就是这张表的
- * 常驻那一侧，但**没有放进来**：整组常驻另有一条 30,000 字节的线
- *（见 `toolSearchCatalog.test.ts` 的「测量完整真实定义」），此刻只剩约 1.5 KB 余量，
- * 放它进去就得抬那条线 —— 而那条线的规矩是「要抬先拿实测 p，不是改个数字」，
- * 我没有这个组的实测 p。折叠它的代价由另外两条路补上：`local-files` 技能正文里
- * 点了 `connect_mcp_server` 的名字（技能带组是主路径），系统提示词的 MCP 那一段
- * 也一直写着这个工具名（见 `capabilities/mcp/promptSection.ts`），
- * 所以模型不必靠 `search_tools` 撞才知道它存在。
- *
- * ## 这里的不确定性，别当它已经定了
- *
- * p 的分母是「会话」还是「轮次」会把结论翻过来：按轮次算，223 轮的样本里除
- * `ue.mesh`（7.2%）外这些组都 ≤5%，`ue.cpp` 往下那几个就该折叠。按会话算（一次
- * 加载事件本来就是会话级的），p 要乘 3~5 倍，整张表才都站得住。**我按会话算，
- * 因为付钱的单位是加载事件。**这个换算系数现在没有实测，拿到之后要回来重算。
- */
-export const RESIDENT_TOOL_GROUPS = new Set<string>([
-  'local',
-  'note',
-  'ue.mesh',
-  'ue.cpp',
-  'ue.animation',
-  'library',
-  'ue.input',
-  'ue.editor'
+  'wrap_up'
 ])
 
 /**
@@ -179,7 +66,7 @@ export const ALWAYS_RESIDENT_TOOL_NAMES = new Set<string>([
 
 /** 没人动过设置时，这个工具是不是常驻。设置页拿它当每一条的默认值 */
 export function isDefaultResidentTool(tool: GroupedTool): boolean {
-  return CORE_NAMES.has(tool.name) || RESIDENT_TOOL_GROUPS.has(toolSearchGroup(tool))
+  return DEFAULT_RESIDENT_NAMES.has(tool.name)
 }
 
 /**
@@ -445,8 +332,7 @@ const PREVIEW_PER_GROUP = 5
  * 组分数低于头名这个比例就不带上。
  *
  * 为什么要有这道线：`limit` 是上限不是配额，没有它就**每次都凑满**，
- * 而每多加载一组就多作废一次 prompt cache（约 1.25×P₀，见 `RESIDENT_TOOL_GROUPS`
- * 的算式）。凑一个不相关的组进来，代价比少搜一次大得多。
+ * 而每多加载一组就多作废一次 prompt cache（约 1.25×P₀）。凑一个不相关的组进来，代价比少搜一次大得多。
  *
  * 0.35 是拍的，还没有用评测集校准过 —— 现在也没有评测集可用。等那 223 条
  * (query, 组集合) 的标注落地之后，这个数应该按组级 recall 调，别凭手感改。
@@ -489,10 +375,10 @@ const searchInput = z.object({
 
 export const TOOL_SEARCH_RULES = `
 <tool_search_beta>
-Common tools and host interaction tools are already loaded. For a task matching a skill, call load_skill first: it loads both the instructions and the authorized tool groups referenced there. read_skill_resource also loads groups referenced in that resource. Use those tools directly on the next response; no separate search is needed for successfully loaded groups.
+Only skill loaders, search_tools and host interaction tools start loaded; everything else (file, shell, web, browser and every engine tool) starts inside groups. For a task matching a skill, call load_skill first: it loads both the instructions and the authorized tool groups referenced there. read_skill_resource also loads groups referenced in that resource. Use those tools directly on the next response; no separate search is needed for successfully loaded groups.
 search_tools is the fallback when no skill matches or a needed group is still absent. Use an already loaded tool directly when it fits; search before deciding a capability is unavailable or writing a shell/Python workaround.
 Search with a short task description; use names for exact tool names from skills/history. An empty call lists capability directories; namespace and offset browse all entries without relying on ranking. Try another query or browse a directory if the first search misses.
-Tool names appearing in system instructions, skills or earlier messages describe workflows, not initial availability: your current list is the only authority on what you can call right now. Most domain tools (blueprint, material, widget, sequencer, PCG, content organizing, level editing and the writing side of scene editing) start inside groups and are absent until loaded. Load the matching skill or search by name. Never call a tool absent from the current list, including in the same batch as its loader.
+Tool names appearing in system instructions, skills or earlier messages describe workflows, not initial availability: your current list is the only authority on what you can call right now. Tools inside groups are absent until loaded. Load the matching skill or search by name. Never call a tool absent from the current list, including in the same batch as its loader.
 Loading adds original complete tool groups for the NEXT response. Definitions remain loaded across this conversation, restored from its surviving history, subject to current permissions and engine connectivity.
 Loaded groups are never evicted, and there is no cap on how many you may load: a cross-domain task should simply load every group it needs. All normal permissions, validation and execution rules still apply.
 </tool_search_beta>`
@@ -530,19 +416,11 @@ export function createToolSearch(
   const byName = new Map(entries.map((entry) => [entry.tool.name, entry]))
   const active = new Map<string, Entry>()
 
-  /**
-   * 这个工具此刻在不在常驻区。常驻的不进搜索加载区，也不占检索名额。
-   *
-   * 用 `entry.group` 而不是转手 `isDefaultResidentTool(entry.tool)` —— 后者会再算一遍
-   * `toolSearchGroup`，而 `Entry.group` 正是为了「算一次存下来」才存的。`getTools()`
-   * 每轮对每个工具调一次这里，`load()` 每组调两遍，白算之外还让同一个事实有了两条
-   * 来路。`isDefaultResidentTool` 留给设置页 —— 那条路径手上只有工具，没有 Entry。
-   */
+  /** 这个工具此刻在不在常驻区。常驻的不进搜索加载区，也不占检索名额。 */
   const isResident = (entry: Entry): boolean =>
     ALWAYS_RESIDENT_TOOL_NAMES.has(entry.tool.name)
       ? true
-      : (residentOverrides[entry.tool.name] ??
-        (CORE_NAMES.has(entry.tool.name) || RESIDENT_TOOL_GROUPS.has(entry.group)))
+      : (residentOverrides[entry.tool.name] ?? DEFAULT_RESIDENT_NAMES.has(entry.tool.name))
 
   const allowedEntries = (): Entry[] =>
     available().flatMap((tool) => {
