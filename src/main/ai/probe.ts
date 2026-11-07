@@ -290,8 +290,8 @@ export function describeProbeError(error: unknown): ProbeFailure {
 /**
  * 从厂商拉取可用模型列表。
  *
- * 只有 OpenAI 系协议有通用的 `/models`；Anthropic 与 Google 的模型集合
- * 变化很慢，走内置目录即可，这里明确返回「不支持」而不是假装拉了个空列表。
+ * OpenAI 系协议拉 `/models`，Anthropic 拉 `/v1/models`；Google 走内置目录，
+ * 这里明确返回「不支持」而不是假装拉了个空列表。
  */
 export async function listRemoteModels(
   provider: ProviderConfig
@@ -317,7 +317,24 @@ export async function listRemoteModels(
     return { ok: false, error: { code: 'listUnsupportedGenerative' } }
   }
 
-  if (provider.protocol === 'anthropic-messages' || provider.protocol === 'google-generative-ai') {
+  if (provider.protocol === 'google-generative-ai') {
+    return { ok: false, error: { code: 'listUnsupportedProtocol' } }
+  }
+
+  // Anthropic 官方和多数中转网关都有 `/v1/models`，返回形状与 OpenAI 相同。
+  // 官方认 x-api-key，网关多半认 Bearer，两种都试；都拉不到再让用户手填
+  if (provider.protocol === 'anthropic-messages') {
+    const base = provider.baseUrl.replace(/\/+$/, '')
+    const url = `${/\/v1$/.test(base) ? base : `${base}/v1`}/models?limit=1000`
+    const apiKey = await resolveApiKey(provider.apiKey).catch(() => '')
+    const attempts: Array<Record<string, string>> = [
+      { 'x-api-key': apiKey || '', 'anthropic-version': '2023-06-01' },
+      apiKey ? { Authorization: `Bearer ${apiKey}` } : {}
+    ]
+    for (const auth of attempts) {
+      const result = await fetchModelList(url, { ...(provider.headers || {}), ...auth })
+      if (result.ok) return result
+    }
     return { ok: false, error: { code: 'listUnsupportedProtocol' } }
   }
 
@@ -332,15 +349,23 @@ export async function listRemoteModels(
     return { ok: false, error: { code: 'listUnsupportedProtocol' } }
   }
 
+  let headers: Record<string, string>
   try {
     const apiKey = await resolveApiKey(provider.apiKey)
-    const headers: Record<string, string> = { ...(provider.headers || {}) }
+    headers = { ...(provider.headers || {}) }
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+  } catch (error) {
+    return { ok: false, error: describeProbeError(error) }
+  }
+  return fetchModelList(`${provider.baseUrl}/models`, headers)
+}
 
-    const response = await fetch(`${provider.baseUrl}/models`, {
-      headers,
-      signal: AbortSignal.timeout(20_000)
-    })
+async function fetchModelList(
+  url: string,
+  headers: Record<string, string>
+): Promise<{ ok: true; models: ModelConfig[] } | { ok: false; error: ProbeFailure }> {
+  try {
+    const response = await fetch(url, { headers, signal: AbortSignal.timeout(20_000) })
     if (!response.ok) {
       return { ok: false, error: { code: 'listHttpError', raw: String(response.status) } }
     }

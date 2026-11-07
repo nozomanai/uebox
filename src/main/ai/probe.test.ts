@@ -181,6 +181,53 @@ describe('testProvider 的探测方式', () => {
     expect(called, '不该发出任何请求').toBe(false)
   })
 
+  it('anthropic-messages 协议从 /v1/models 拉模型列表', async () => {
+    const urls: string[] = []
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      urls.push(String(url))
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [{ id: 'claude-b' }, { id: 'claude-a' }] })
+      }
+    }) as unknown as typeof fetch
+
+    for (const baseUrl of ['https://token.uebox.ai', 'https://token.uebox.ai/v1/']) {
+      const result = await listRemoteModels({
+        ...providerWith([], 'chat'),
+        protocol: 'anthropic-messages',
+        baseUrl
+      })
+      expect(result).toEqual({
+        ok: true,
+        models: [
+          { id: 'claude-a', supportsTools: true },
+          { id: 'claude-b', supportsTools: true }
+        ]
+      })
+    }
+    expect(urls).toEqual([
+      'https://token.uebox.ai/v1/models?limit=1000',
+      'https://token.uebox.ai/v1/models?limit=1000'
+    ])
+  })
+
+  it('anthropic-messages 两种鉴权都拉不到时让用户手填', async () => {
+    let calls = 0
+    globalThis.fetch = (async () => {
+      calls++
+      return { ok: false, status: 404, json: async () => ({}) }
+    }) as unknown as typeof fetch
+
+    const result = await listRemoteModels({
+      ...providerWith([], 'chat'),
+      protocol: 'anthropic-messages',
+      baseUrl: 'https://example.com'
+    })
+    expect(result).toEqual({ ok: false, error: { code: 'listUnsupportedProtocol' } })
+    expect(calls).toBe(2)
+  })
+
   it('用途是向量化的 Provider 打 /embeddings，不带末尾双斜杠', async () => {
     const urls: string[] = []
     stubEmbeddings(urls)
