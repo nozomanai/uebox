@@ -118,7 +118,7 @@ const DOMAIN_TERMS: Record<string, string> = {
   asset: '盒子素材库 保管库 标签 文件夹 asset library vault tag folder',
   library: '蓝图库 材质库 片段 收藏 snippet library',
   project:
-    '工程 项目 创建 打开 启动 打包 发布 可执行文件 冒烟 project create open launch package build exe smoke',
+    '工程 项目 创建 打开 启动 打包 发布 可执行文件 冒烟 压缩 上传 jam 英文 中文 文字 本地化 录屏 录制 玩法视频 project create open launch package build exe smoke zip itch english localization record video gameplay',
   engine: '引擎 版本 安装 路径 engine version install path',
   aigc: '生成 图片 视频 三维 音效 声音 generate image video 3d sound effect sfx',
   'video.production':
