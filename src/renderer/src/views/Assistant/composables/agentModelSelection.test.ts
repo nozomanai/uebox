@@ -27,6 +27,29 @@ function settings(overrides: Partial<SettingsView> = {}): SettingsView {
 }
 
 describe('buildAgentModelCatalog', () => {
+  it('套餐按协议分出的两个对话来源合成一组，选项各带各的来源', () => {
+    const plan = { displayName: 'Box Plan', kind: 'chat' as const }
+    const catalog = buildAgentModelCatalog(
+      settings({
+        providers: [
+          provider({ ...plan, id: 'creator-plan', models: [{ id: 'uebox-chat' }] }),
+          provider({
+            ...plan,
+            id: 'creator-plan-anthropic',
+            protocol: 'anthropic-messages',
+            models: [{ id: 'claude-sonnet-5-5' }]
+          }),
+          provider()
+        ]
+      })
+    )
+    expect(catalog.groups.map((group) => group.providerName)).toEqual(['Box Plan', 'OpenAI'])
+    expect(catalog.groups[0]!.options.map((o) => o.providerId)).toEqual([
+      'creator-plan',
+      'creator-plan-anthropic'
+    ])
+  })
+
   it('只列对话 Provider，并按 Provider 分组保留模型身份', () => {
     const value = settings({
       providers: [

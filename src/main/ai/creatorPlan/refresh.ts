@@ -18,6 +18,7 @@ import { resolveApiKey } from '../credentials'
 import { readSettings, updateSettings } from '../store'
 import {
   isPlanProvider,
+  planApiBaseUrl,
   migrateRetiredModels,
   refreshPlanModels,
   releaseDroppedRoles,
@@ -43,7 +44,7 @@ export async function planConnection(): Promise<{
   const provider = settings.providers.find((p) => isPlanProvider(p.id))
   if (!provider) return null
   const apiKey = await resolveApiKey(provider.apiKey).catch(() => null)
-  return { baseUrl: provider.baseUrl, apiKey: apiKey || null }
+  return { baseUrl: planApiBaseUrl(provider), apiKey: apiKey || null }
 }
 
 export interface RefreshOutcome {

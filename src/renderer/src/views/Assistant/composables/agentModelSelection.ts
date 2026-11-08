@@ -6,6 +6,7 @@ import {
   type ProviderView,
   type SettingsView
 } from '@core/shared/aiProvider'
+import { isPlanProvider } from '@core/shared/creatorPlan'
 
 export interface AgentModelOption {
   key: string
@@ -85,6 +86,14 @@ export function buildAgentModelCatalog(
       }
     })
     .filter((group) => group.options.length > 0)
+    // 套餐的对话模型按协议分在两个来源里（Claude 单独一个），对用户是同一个 Box Plan
+    .reduce<AgentModelGroup[]>((merged, group) => {
+      const last = merged[merged.length - 1]
+      if (last && isPlanProvider(last.providerId) && isPlanProvider(group.providerId)) {
+        merged[merged.length - 1] = { ...last, options: [...last.options, ...group.options] }
+      } else merged.push(group)
+      return merged
+    }, [])
 
   const options = groups.flatMap((group) => group.options)
   const globalBinding = settings.roles.agent ?? settings.roles.chat ?? null

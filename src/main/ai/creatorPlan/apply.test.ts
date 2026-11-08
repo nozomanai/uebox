@@ -4,12 +4,14 @@ import type { CreatorPlanManifest, CreatorPlanRoleChange } from '../../../shared
 import { normalizeSettings } from '../store'
 import type { AiProviderSettings, ProviderConfig } from '../types'
 import {
+  PLAN_ANTHROPIC_PROVIDER_ID,
   PLAN_KEY_ID,
   PLAN_PROVIDER_ID,
   PLAN_PROVIDER_IDS,
   applyPlan,
   isFreeOnFailureModel,
   managedRoles,
+  planApiBaseUrl,
   planProviders,
   planRoleChanges,
   planSummary,
@@ -994,5 +996,83 @@ describe('清单 models：模型列表由服务端定', () => {
     expect(isFreeOnFailureModel(settings, PLAN_PROVIDER_ID, 'uebox-chat-beta')).toBe(true)
     expect(isFreeOnFailureModel(settings, PLAN_PROVIDER_ID, 'uebox-chat')).toBe(false)
     expect(isFreeOnFailureModel(settings, 'my-gateway', 'gpt-x')).toBe(false)
+  })
+
+  describe('清单标了 anthropic-messages 的对话模型', () => {
+    const claude = {
+      ...chatSpec('claude-sonnet-5-5', { context_window: 1000000, max_output_tokens: 128000 }),
+      model: 'claude-sonnet-5-5',
+      roles: CHAT_ROLES,
+      default_for: [],
+      protocol: 'anthropic-messages'
+    }
+    const withClaude: CreatorPlanManifest = {
+      ...modelsManifest,
+      models: [...modelsManifest.models!, claude]
+    }
+    const claudeBinding = { providerId: PLAN_ANTHROPIC_PROVIDER_ID, modelId: claude.model }
+
+    it('单独放进 Anthropic 来源，地址去掉 /v1；其余对话模型留在原来源', () => {
+      const providers = planProviders(withClaude, keyRef)
+      const anthropic = providers.find((p) => p.id === PLAN_ANTHROPIC_PROVIDER_ID)!
+      expect(anthropic).toMatchObject({
+        kind: 'chat',
+        protocol: 'anthropic-messages',
+        baseUrl: 'https://plan.example',
+        displayName: 'Box Plan'
+      })
+      expect(anthropic.models.map((m) => m.id)).toEqual([claude.model])
+      expect(planApiBaseUrl(anthropic)).toBe('https://plan.example/v1')
+      const openai = providers.find((p) => p.id === PLAN_PROVIDER_ID)!
+      expect(openai.protocol).toBe('openai-completions')
+      expect(openai.models.map((m) => m.id)).toEqual(['uebox-chat', 'uebox-chat-beta'])
+    })
+
+    it('默认模型是它时，角色绑到 Anthropic 来源', () => {
+      const claudeDefault: CreatorPlanManifest = {
+        ...withClaude,
+        roles: { ...withClaude.roles, chat: claude, agent: claude, summary: claude }
+      }
+      const settings = applyPlan(base, claudeDefault, keyRef, ['chat', 'summary'])
+      expect(settings.roles.chat).toEqual({ ...claudeBinding, source: 'plan' })
+      expect(settings.roles.summary).toEqual({ ...claudeBinding, source: 'plan' })
+    })
+
+    it('老用户绑在 OpenAI 兼容来源上的 Claude：刷新时搬到 Anthropic 来源，模型不换', () => {
+      const unmarked: CreatorPlanManifest = {
+        ...withClaude,
+        models: [...modelsManifest.models!, { ...claude, protocol: undefined }]
+      }
+      const old = choose(normalizeSettings(applyPlan(base, unmarked, keyRef, ['chat', 'summary'])), {
+        chat: { providerId: PLAN_PROVIDER_ID, modelId: claude.model }
+      })
+      expect(plan(old).models.map((m) => m.id)).toContain(claude.model)
+
+      const next = normalizeSettings(
+        syncPlanModels(refreshPlanModels(old, withClaude), withClaude)
+      )
+      expect(next.roles.chat).toEqual(claudeBinding)
+      expect(next.roles.summary).toEqual(old.roles.summary)
+      expect(plan(next).models.map((m) => m.id)).toEqual(['uebox-chat', 'uebox-chat-beta'])
+      const anthropic = plan(next, PLAN_ANTHROPIC_PROVIDER_ID)
+      expect(anthropic).toMatchObject({ baseUrl: 'https://plan.example', apiKey: keyRef })
+      expect(next.providers.map((p) => p.id).indexOf(PLAN_ANTHROPIC_PROVIDER_ID)).toBe(
+        next.providers.map((p) => p.id).indexOf(PLAN_PROVIDER_ID) + 1
+      )
+      // 再刷一次原样返回，不白写盘
+      expect(refreshPlanModels(next, withClaude)).toBe(next)
+      expect(syncPlanModels(next, withClaude)).toBe(next)
+
+      // 服务端撤掉标记：搬回去，空了的 Anthropic 来源删掉
+      const back = syncPlanModels(next, unmarked)
+      expect(back.roles.chat).toEqual({ providerId: PLAN_PROVIDER_ID, modelId: claude.model })
+      expect(back.providers.some((p) => p.id === PLAN_ANTHROPIC_PROVIDER_ID)).toBe(false)
+    })
+
+    it('清单地址不是 …/v1 时拼不出 Messages 地址，照旧走 OpenAI 兼容', () => {
+      const odd = { ...withClaude, api: { base_url: 'https://plan.example/api' } }
+      const ids = planProviders(odd, keyRef).map((p) => p.id)
+      expect(ids).not.toContain(PLAN_ANTHROPIC_PROVIDER_ID)
+    })
   })
 })

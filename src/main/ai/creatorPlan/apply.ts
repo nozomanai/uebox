@@ -21,6 +21,7 @@ import {
   type ModelConfig,
   type ModelRole,
   type ProviderKind,
+  type ProviderProtocol,
   type RoleBindings
 } from '../../../shared/aiProvider'
 import {
@@ -46,6 +47,7 @@ import {
 
 export { PLAN_PROVIDER_ID, isPlanProvider }
 export const PLAN_KEY_ID = 'creator-plan:key'
+const PLAN_KEY_REF: ApiKeyRef = { kind: 'literal', id: PLAN_KEY_ID }
 
 /**
  * 被套餐接管前的绑定。null = 那个角色原来没设置。
@@ -82,6 +84,47 @@ export const PLAN_PROVIDER_IDS: Readonly<Record<ProviderKind, string>> = Object.
   search: `${PLAN_PROVIDER_ID}-search`,
   judge: `${PLAN_PROVIDER_ID}-judge`
 })
+
+/**
+ * 对话类里走 Anthropic Messages 的来源。清单给模型标了 `protocol: 'anthropic-messages'`
+ * （中转站按上游渠道判断：上游原生支持 Messages 的才标），这些模型放这里直连 `/v1/messages`：
+ * 经 OpenAI 兼容格式转一道会丢提示缓存和带签名的思考块。
+ * 一个来源 id 只对应一种协议，**这个 id 不许改**，也不许拿 `creator-plan` 换协议。
+ */
+export const PLAN_ANTHROPIC_PROVIDER_ID = `${PLAN_PROVIDER_ID}-anthropic`
+
+/** 清单 `base_url` 是 `…/v1`；Anthropic SDK 自己拼 `/v1/messages`，那一路要去掉 `/v1`。不是这个形状回 null */
+function anthropicBaseUrl(baseUrl: string): string | null {
+  const trimmed = baseUrl.replace(/\/+$/, '')
+  return /\/v1$/.test(trimmed) ? trimmed.slice(0, -'/v1'.length) : null
+}
+
+/** 套餐来源按协议该填的地址 */
+function planBaseUrl(protocol: ProviderProtocol, baseUrl: string): string {
+  return protocol === 'anthropic-messages' ? (anthropicBaseUrl(baseUrl) ?? baseUrl) : baseUrl
+}
+
+/** 套餐来源对应的清单 `base_url`（`…/v1`）：连接、拉清单、领活动都用这个 */
+export function planApiBaseUrl(provider: Pick<ProviderConfig, 'protocol' | 'baseUrl'>): string {
+  const base = provider.baseUrl.replace(/\/+$/, '')
+  return provider.protocol === 'anthropic-messages' ? `${base}/v1` : base
+}
+
+/** 一个模型落在哪个套餐来源。清单地址不是 `…/v1` 时拼不出 Messages 地址，照旧走 OpenAI 兼容 */
+function slotOf(
+  kind: ProviderKind,
+  spec: PlanRoleSpec,
+  manifest: CreatorPlanManifest
+): { id: string; protocol: ProviderProtocol } {
+  if (
+    kind === 'chat' &&
+    spec.protocol === 'anthropic-messages' &&
+    anthropicBaseUrl(manifest.api?.base_url ?? '')
+  ) {
+    return { id: PLAN_ANTHROPIC_PROVIDER_ID, protocol: 'anthropic-messages' }
+  }
+  return { id: PLAN_PROVIDER_IDS[kind], protocol: 'openai-completions' }
+}
 
 const THINKING_LEVELS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
@@ -278,48 +321,59 @@ function entryModel(entry: PlanModelEntry): ModelConfig {
   }
 }
 
+/** 一个套餐来源该有的模型。来源按类别分，对话类再按协议分（见 PLAN_ANTHROPIC_PROVIDER_ID） */
+interface PlanSlot {
+  kind: ProviderKind
+  protocol: ProviderProtocol
+  models: Map<string, ModelConfig>
+}
+
 /**
- * 清单 → 各类套餐来源该有的模型。
+ * 清单 → 各套餐来源（键是来源 id）该有的模型。
  *
  * 有 `models` 就按它（服务端定有哪些、叫什么、标什么），客户端不写死任何模型。
  * 各角色的默认模型按协议都在 `models` 里；万一漏了、或者旧服务端根本没有 `models`，按 `roles` 补上。
+ * 同一类里一个模型只落一个来源，以先出现的为准。
  */
-function planModelConfigs(
-  manifest: CreatorPlanManifest
-): Map<ProviderKind, Map<string, ModelConfig>> {
-  const byKind = new Map<ProviderKind, Map<string, ModelConfig>>()
-  const add = (kind: ProviderKind, model: ModelConfig): void => {
-    const models = byKind.get(kind) ?? new Map<string, ModelConfig>()
-    if (!models.has(model.id)) models.set(model.id, model)
-    byKind.set(kind, models)
+function planSlots(manifest: CreatorPlanManifest): Map<string, PlanSlot> {
+  const slots = new Map<string, PlanSlot>()
+  const seen = new Set<string>()
+  const add = (kind: ProviderKind, spec: PlanRoleSpec, model: ModelConfig): void => {
+    if (seen.has(`${kind}\n${model.id}`)) return
+    seen.add(`${kind}\n${model.id}`)
+    const { id, protocol } = slotOf(kind, spec, manifest)
+    const slot = slots.get(id) ?? { kind, protocol, models: new Map<string, ModelConfig>() }
+    slot.models.set(model.id, model)
+    slots.set(id, slot)
   }
   for (const entry of planModelEntries(manifest) ?? []) {
-    add(ROLE_KIND[entry.primary], entryModel(entry))
+    add(ROLE_KIND[entry.primary], entry.spec, entryModel(entry))
   }
   for (const [role, spec] of Object.entries(planRoleSpecs(manifest)) as [
     ModelRole,
     PlanRoleSpec
   ][]) {
-    add(ROLE_KIND[role], toModelConfig(role, spec))
+    add(ROLE_KIND[role], spec, toModelConfig(role, spec))
   }
-  return byKind
+  return slots
 }
 
 /** 同上，按模型 id 摊平 */
 function planModelsById(manifest: CreatorPlanManifest): Map<string, ModelConfig> {
-  return new Map(
-    [...planModelConfigs(manifest).values()].flatMap((models) => [...models.entries()])
-  )
+  return new Map([...planSlots(manifest).values()].flatMap((slot) => [...slot.models.entries()]))
 }
 
-/** 这个角色的套餐来源 id */
-export function planProviderIdOf(role: ModelRole): string {
-  return PLAN_PROVIDER_IDS[ROLE_KIND[role]]
+/** 这一类里放着这个模型的套餐来源；清单里没有这个模型时回这一类的默认来源 */
+function slotIdOf(slots: Map<string, PlanSlot>, kind: ProviderKind, modelId: string): string {
+  for (const [id, slot] of slots) {
+    if (slot.kind === kind && slot.models.has(modelId)) return id
+  }
+  return PLAN_PROVIDER_IDS[kind]
 }
 
 /** 清单 → 套餐的来源。一类一个，没有模型的类不生成；`models` 里的可选模型一并列上 */
 export function planProviders(manifest: CreatorPlanManifest, apiKey: ApiKeyRef): ProviderConfig[] {
-  const byKind = planModelConfigs(manifest)
+  const slots = planSlots(manifest)
   const pricing: Record<string, { version: string }> = parsePlanPricing(manifest.route_pricing)
   const video = parseVideoPricing(manifest.video_pricing)
   if (video) pricing['uebox-video'] = video
@@ -331,12 +385,12 @@ export function planProviders(manifest: CreatorPlanManifest, apiKey: ApiKeyRef):
       throw new Error('This client requires a shared pricing version per provider')
     return versions[0] ? { [PLAN_PRICING_HEADER]: versions[0] } : undefined
   }
-  return [...byKind.entries()].map(([kind, models]) => ({
-    id: PLAN_PROVIDER_IDS[kind],
+  return [...slots.entries()].map(([id, { kind, protocol, models }]) => ({
+    id,
     displayName: PLAN_DISPLAY_NAME,
     kind,
-    protocol: 'openai-completions' as const,
-    baseUrl: manifest.api.base_url,
+    protocol,
+    baseUrl: planBaseUrl(protocol, manifest.api.base_url),
     apiKey,
     ...PLAN_PROVIDER_EXTRA[kind],
     ...(headersFor(models) ? { headers: headersFor(models) } : {}),
@@ -477,6 +531,7 @@ export function applyPlan(
   originals: OriginalBindings = {}
 ): AiProviderSettings {
   const specs = bindableRoleSpecs(manifest)
+  const slots = planSlots(manifest)
   const providers = [
     ...settings.providers.filter((p) => !isPlanProvider(p.id)),
     ...planProviders(manifest, apiKey)
@@ -486,7 +541,11 @@ export function applyPlan(
   for (const role of SUPPORTED_ROLES) {
     const spec = specs[role]
     if (spec && selected.includes(role)) {
-      roles[role] = { providerId: planProviderIdOf(role), modelId: spec.model, source: 'plan' }
+      roles[role] = {
+        providerId: slotIdOf(slots, ROLE_KIND[role], spec.model),
+        modelId: spec.model,
+        source: 'plan'
+      }
     } else if (roles[role]?.source === 'plan') {
       const restored = restoredBinding(providers, originals[role])
       if (restored) roles[role] = restored
@@ -494,14 +553,13 @@ export function applyPlan(
     }
   }
   // 没勾、用户手动绑着套餐可选模型的角色：新清单里不给了就退回默认，不留一个调不通的绑定
-  const kept = planModelEntries(manifest)
-    ? fallBackUnoffered(roles, planModelConfigs(manifest), specs)
-    : roles
+  const kept = planModelEntries(manifest) ? fallBackUnoffered(roles, slots, specs) : roles
   return { ...settings, providers, roles: kept }
 }
 
 /**
  * 绑在套餐来源上、清单里已经不给（或不再允许绑这个角色）的模型：那个角色退回套餐的默认模型。
+ * 模型还在、只是换了来源（清单给它标上或撤掉了 Anthropic 协议）的，跟着搬过去，模型不换。
  *
  * 例：用户手动选了可选模型 Box-Chat Beta，后来它下线了、或者换到了不含它的档位。
  * 只在这种时候换，别的情况一律不替用户换模型。嵌入不退（换模型要重建知识库，走 deprecation 提示）；
@@ -510,7 +568,7 @@ export function applyPlan(
  */
 function fallBackUnoffered(
   roles: RoleBindings,
-  configs: Map<ProviderKind, Map<string, ModelConfig>>,
+  slots: Map<string, PlanSlot>,
   specs: Partial<Record<ModelRole, PlanRoleSpec>>
 ): RoleBindings {
   let next = roles
@@ -518,10 +576,21 @@ function fallBackUnoffered(
     const binding = roles[role]
     const spec = specs[role]
     if (!binding || !spec || role === 'embedding' || !isPlanBinding(binding)) continue
-    const model = configs.get(ROLE_KIND[role])?.get(binding.modelId)
-    if (model && modelAllowsRole(model, role)) continue
+    const kind = ROLE_KIND[role]
+    const home = slotIdOf(slots, kind, binding.modelId)
+    const model = slots.get(home)?.models.get(binding.modelId)
+    if (model && modelAllowsRole(model, role)) {
+      if (home === binding.providerId) continue
+      if (next === roles) next = { ...roles }
+      next[role] = { ...binding, providerId: home }
+      continue
+    }
     if (next === roles) next = { ...roles }
-    next[role] = { providerId: planProviderIdOf(role), modelId: spec.model, source: 'plan' }
+    next[role] = {
+      providerId: slotIdOf(slots, kind, spec.model),
+      modelId: spec.model,
+      source: 'plan'
+    }
   }
   return next
 }
@@ -540,15 +609,42 @@ export function syncPlanModels(
   manifest: CreatorPlanManifest
 ): AiProviderSettings {
   if (!planModelEntries(manifest) || !isLivePlan(manifest)) return settings
-  const configs = planModelConfigs(manifest)
-  const roles = fallBackUnoffered(settings.roles, configs, bindableRoleSpecs(manifest))
+  const slots = planSlots(manifest)
+  const roles = fallBackUnoffered(settings.roles, slots, bindableRoleSpecs(manifest))
   const bound = new Set(
     Object.values(roles).map((binding) => binding && `${binding.providerId}\n${binding.modelId}`)
   )
   let changed = roles !== settings.roles
-  const providers = settings.providers.map((provider) => {
-    const offered = isPlanProvider(provider.id) ? configs.get(provider.kind) : undefined
-    if (!offered) return provider
+  // 已经导入了的类别，清单里新分出来的来源（比如头一回标了 Anthropic 协议）补上：
+  // 用同类来源的那把密钥，排在它后面
+  const imported = settings.providers.filter((p) => isPlanProvider(p.id))
+  const firstOfKind = new Map<ProviderKind, ProviderConfig>()
+  for (const provider of imported) {
+    if (!firstOfKind.has(provider.kind)) firstOfKind.set(provider.kind, provider)
+  }
+  const added = new Map<ProviderKind, ProviderConfig[]>()
+  for (const provider of planProviders(manifest, PLAN_KEY_REF)) {
+    const sibling = firstOfKind.get(provider.kind)
+    if (!sibling || imported.some((p) => p.id === provider.id)) continue
+    const list = added.get(provider.kind) ?? []
+    list.push({ ...provider, apiKey: sibling.apiKey })
+    added.set(provider.kind, list)
+  }
+  const kindsInManifest = new Set([...slots.values()].map((slot) => slot.kind))
+  const providers = settings.providers.flatMap((provider): ProviderConfig[] => {
+    if (!isPlanProvider(provider.id)) return [provider]
+    const extra =
+      firstOfKind.get(provider.kind)?.id === provider.id ? (added.get(provider.kind) ?? []) : []
+    if (extra.length > 0) changed = true
+    const offered = slots.get(provider.id)?.models
+    if (!offered) {
+      // 这一类在清单里还有，只是不在这个来源了：只留还有角色绑着的模型，一个不剩就删
+      if (!kindsInManifest.has(provider.kind)) return [provider, ...extra]
+      const models = provider.models.filter((model) => bound.has(`${provider.id}\n${model.id}`))
+      if (models.length === provider.models.length) return [provider, ...extra]
+      changed = true
+      return models.length > 0 ? [{ ...provider, models }, ...extra] : extra
+    }
     const current = new Map(provider.models.map((model) => [model.id, model]))
     const models = [
       ...[...offered.values()].map((model) => current.get(model.id) ?? model),
@@ -559,9 +655,9 @@ export function syncPlanModels(
     const same =
       models.length === provider.models.length &&
       models.every((model, index) => model === provider.models[index])
-    if (same) return provider
+    if (same) return [provider, ...extra]
     changed = true
-    return { ...provider, models }
+    return [{ ...provider, models }, ...extra]
   })
   return changed ? { ...settings, providers, roles } : settings
 }
@@ -727,7 +823,9 @@ export function refreshPlanModels(
       changed = true
       return { ...model, ...next }
     })
-    const baseUrl = manifest.api?.base_url || provider.baseUrl
+    const baseUrl = manifest.api?.base_url
+      ? planBaseUrl(provider.protocol, manifest.api.base_url)
+      : provider.baseUrl
     if (baseUrl !== provider.baseUrl || provider.displayName !== PLAN_DISPLAY_NAME) changed = true
     return { ...provider, displayName: PLAN_DISPLAY_NAME, baseUrl, models }
   })
