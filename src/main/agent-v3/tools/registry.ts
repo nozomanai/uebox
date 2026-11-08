@@ -27,6 +27,7 @@ import { aigcTools } from './aigc'
 import { taskVideoTools } from './builtin/taskVideo'
 import { engineTools } from './builtin/engines'
 import { projectPackageTools } from './builtin/projectPackage'
+import { createRecordGameplayTool } from './builtin/recordGameplay'
 import { createProjectUpdatePluginTool } from './adapted/project/updatePlugin'
 import { createWebTools } from './builtin/web'
 import { createLocalFileTools } from './builtin/localFiles'
@@ -1283,6 +1284,8 @@ export function listToolRisks(): Record<string, ToolRisk> {
   for (const tool of projectPackageTools()) {
     table[tool.name] = tool.unrealBox.risk
   }
+  const recordGameplay = createRecordGameplayTool()
+  table[recordGameplay.name] = recordGameplay.unrealBox.risk
   // 装 / 更新插件会关掉再重开编辑器，同样不在 REGISTRATIONS 里
   const updatePlugin = createProjectUpdatePluginTool()
   table[updatePlugin.name] = updatePlugin.unrealBox.risk
@@ -1454,6 +1457,8 @@ export function buildAllTools(deps: BuildToolsDeps = {}): UnrealAgentTool<never>
     ...engineTools,
     // 打包成可执行文件、拿打包版冒烟。不依赖编辑器，所以不在 ue.* 下（断开引擎时也能用）
     ...projectPackageTools(),
+    // 录玩法视频：录打包版窗口或 PIE 窗口，不依赖编辑器连接
+    createRecordGameplayTool() as unknown as UnrealAgentTool<never>,
     // 装 / 更新工程里的插件。插件太旧或没装上时引擎正连不上，所以同样不在 ue.* 下
     createProjectUpdatePluginTool() as unknown as UnrealAgentTool<never>,
     // 会话体检。命名空间在 `ue.system` 下，但它**不依赖引擎连接** ——
