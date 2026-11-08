@@ -32,6 +32,7 @@ import { defineTool, type UnrealAgentTool } from '../defineTool'
 import { getTargetProjectPath } from '../../core/projectTargetContext'
 import UnrealPathManagerUtil from '../../../utils/UnrealPathManager'
 import { readUeJsonFile } from '../../../utils/ueTextFile'
+import { createFindNonEnglishTextTool } from './projectTextAudit'
 
 // ── 纯函数：参数、阶段、日志 ────────────────────────────────────────────
 
@@ -456,5 +457,127 @@ export function createSmokeTestTool(): UnrealAgentTool<SmokeResult> {
   })
 }
 
+// ── project_zip_build ───────────────────────────────────────────────────
+//
+// 打包版要交出去（itch.io、jam、发给别人试玩）都是一个 zip。itch 网页上传上限 1 GB，
+// Development 版里的 .pdb 动辄几百 MB、试玩用不上，压之前去掉。
+// 压缩用系统自带的 tar（Windows 10 起自带 bsdtar，macOS 也是 bsdtar）：边读边写，
+// 几个 GB 的包也不占内存；adm-zip 要把整个包读进内存。
+
+/** itch.io 网页上传的上限。按十进制算，比 1 GiB 严一点，宁可提前提醒 */
+export const ZIP_UPLOAD_LIMIT_BYTES = 1_000_000_000
+
+/**
+ * `队名_游戏名.zip`。只留 ASCII 字母、数字和连字符：jam 要求全英文，
+ * 文件名里的中文、空格到了别人的解压软件里也常是乱码。
+ */
+export function zipFileName(teamName: string, gameName: string): string {
+  const clean = (value: string, label: string): string => {
+    const out = value
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/[^A-Za-z0-9-]/g, '')
+    if (!out) throw new Error(`${label}「${value}」去掉非英文字符后是空的，请给英文名`)
+    return out
+  }
+  return `${clean(teamName, '队名')}_${clean(gameName, '游戏名')}.zip`
+}
+
+/** 把 `parent/folder` 整个压进 dest；zip 里第一层就是 folder。去掉调试符号 */
+export function zipArgs(parent: string, folder: string, dest: string): string[] {
+  return ['-a', '-c', '-f', dest, '--exclude', '*.pdb', '-C', parent, folder]
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`
+  return `${Math.max(1, Math.round(bytes / 1_000_000))} MB`
+}
+
+const zipInput = z.object({
+  exe_path: z.string().min(1).describe('project_package 返回的 exe'),
+  team_name: z.string().min(1).describe('队名，英文'),
+  game_name: z.string().min(1).describe('游戏名，英文'),
+  output_dir: z.string().optional().describe('zip 放哪。省略 = 打包输出目录')
+})
+
+export interface ZipResult {
+  zipPath: string
+  bytes: number
+  overLimit: boolean
+}
+
+export function createZipBuildTool(): UnrealAgentTool<ZipResult> {
+  return defineTool<typeof zipInput, ZipResult>({
+    name: 'project_zip_build',
+    namespace: 'project',
+    risk: 'mutating',
+    concurrency: 'sequential',
+    description:
+      '把 project_package 打出来的游戏压成「队名_游戏名.zip」，去掉 .pdb 调试符号，并报告大小；' +
+      '超过 1 GB（itch.io 网页上传上限）时会提示。提交 jam、上传 itch.io、发给别人试玩前用。',
+    input: zipInput,
+    execute: async ({ exe_path, team_name, game_name, output_dir }, ctx) => {
+      if (process.platform !== 'win32' && process.platform !== 'darwin') {
+        throw new Error('只支持 Windows 和 macOS 上压缩')
+      }
+      const name = zipFileName(team_name, game_name)
+      await fs.access(exe_path).catch(() => {
+        throw new Error(`找不到 ${exe_path}`)
+      })
+      // exe 所在的那一层（UE5 是 Windows/）就是玩家要的全部文件
+      const buildDir = dirname(exe_path)
+      const parent = dirname(buildDir)
+      const destDir = resolve(output_dir ?? parent)
+      await fs.mkdir(destDir, { recursive: true })
+      const zipPath = join(destDir, name)
+      await fs.rm(zipPath, { force: true })
+
+      ctx.report({ text: `压缩 ${name}` })
+      const tar =
+        process.platform === 'win32'
+          ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+          : '/usr/bin/tar'
+      const child = spawn(tar, zipArgs(parent, basename(buildDir), zipPath), {
+        windowsHide: true,
+        stdio: ['ignore', 'ignore', 'pipe']
+      })
+      lowerPriority(child)
+      let stderr = ''
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString('utf8')).slice(-2000)
+      })
+      const onAbort = (): void => killTree(child)
+      ctx.signal?.addEventListener('abort', onAbort, { once: true })
+      const code = await new Promise<number | null>((done) => {
+        child.on('close', (exit) => done(exit))
+        child.on('error', (error) => {
+          stderr += String(error)
+          done(null)
+        })
+      }).finally(() => ctx.signal?.removeEventListener('abort', onAbort))
+
+      const bytes = await fs.stat(zipPath).then(
+        (stat) => stat.size,
+        () => 0
+      )
+      if (code !== 0 || bytes === 0) {
+        await fs.rm(zipPath, { force: true })
+        throw new Error(`压缩失败（退出码 ${code ?? '无'}）：${stderr.trim() || '没有输出'}`)
+      }
+      const overLimit = bytes > ZIP_UPLOAD_LIMIT_BYTES
+      const text = overLimit
+        ? `zip 超过 1 GB：${formatBytes(bytes)}，itch.io 网页传不上去。` +
+          `用 itch 的 butler 命令行上传，或者减小包体（删没用到的地图和资产、降纹理尺寸）后重新打包。\n${zipPath}`
+        : `zip 已生成：${formatBytes(bytes)}，在 1 GB 以内。\n${zipPath}`
+      return { text, details: { zipPath, bytes, overLimit } }
+    }
+  })
+}
+
 export const projectPackageTools = (): UnrealAgentTool<never>[] =>
-  [createPackageTool(), createSmokeTestTool()] as unknown as UnrealAgentTool<never>[]
+  [
+    createPackageTool(),
+    createSmokeTestTool(),
+    createZipBuildTool(),
+    createFindNonEnglishTextTool()
+  ] as unknown as UnrealAgentTool<never>[]

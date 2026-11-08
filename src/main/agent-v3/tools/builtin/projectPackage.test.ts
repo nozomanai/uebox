@@ -3,7 +3,22 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../utils/UnrealPathManager', () => ({ default: {} }))
 
-import { buildUatArgs, fatalLines, keyErrors, quoteForCmd, stageOf } from './projectPackage'
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'fs/promises'
+import { tmpdir } from 'os'
+import { join } from 'path'
+import AdmZip from 'adm-zip'
+
+import {
+  buildUatArgs,
+  createZipBuildTool,
+  fatalLines,
+  formatBytes,
+  keyErrors,
+  quoteForCmd,
+  stageOf,
+  zipArgs,
+  zipFileName
+} from './projectPackage'
 
 /**
  * 打包一次半小时，参数拼错、日志读错都要到最后才发现。这几个纯函数先钉住。
@@ -87,4 +102,58 @@ describe('读打包版游戏日志', () => {
     ])
     expect(fatalLines('LogInit: all good')).toEqual([])
   })
+})
+
+describe('打包版压 zip', () => {
+  it('文件名只留英文字母、数字、连字符', () => {
+    expect(zipFileName('Pixel Crew', 'Moon-Runner!')).toBe('PixelCrew_Moon-Runner.zip')
+    expect(() => zipFileName('像素小队', 'Game')).toThrow(/英文/)
+  })
+
+  it('tar 参数：zip 格式、去掉 pdb、第一层是 exe 所在目录', () => {
+    expect(zipArgs('D:/b', 'Windows', 'D:/b/T_G.zip')).toEqual([
+      '-a',
+      '-c',
+      '-f',
+      'D:/b/T_G.zip',
+      '--exclude',
+      '*.pdb',
+      '-C',
+      'D:/b',
+      'Windows'
+    ])
+  })
+
+  it('大小按十进制 GB 报', () => {
+    expect(formatBytes(1_230_000_000)).toBe('1.23 GB')
+    expect(formatBytes(5_400_000)).toBe('5 MB')
+  })
+
+  it.runIf(process.platform === 'win32' || process.platform === 'darwin')(
+    '真压一次：zip 里有 exe，没有 pdb，回执报的是磁盘上的大小',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'uebox-zip-'))
+      try {
+        const build = join(root, 'Windows')
+        await mkdir(join(build, 'Game', 'Binaries'), { recursive: true })
+        await writeFile(join(build, 'Game.exe'), 'exe')
+        await writeFile(join(build, 'Game', 'Binaries', 'Game.pdb'), 'x'.repeat(10_000))
+        const tool = createZipBuildTool()
+        const result = await tool.execute('call-1', {
+          exe_path: join(build, 'Game.exe'),
+          team_name: 'Team',
+          game_name: 'Game'
+        })
+        const zipPath = join(root, 'Team_Game.zip')
+        expect(result.details.zipPath).toBe(zipPath)
+        expect(result.details.bytes).toBe((await stat(zipPath)).size)
+        expect(result.details.overLimit).toBe(false)
+        const names = new AdmZip(zipPath).getEntries().map((e) => e.entryName)
+        expect(names.some((n) => n.endsWith('Game.exe'))).toBe(true)
+        expect(names.some((n) => n.endsWith('.pdb'))).toBe(false)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    }
+  )
 })
