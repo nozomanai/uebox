@@ -618,6 +618,52 @@ const ITERATION_NUDGE =
   'not tried, that move is worth reporting too.'
 
 /**
+ * 模型刚看到的那份上下文里，这个技能的正文还在不在。
+ *
+ * 为什么要问：同一个技能重复加载，正文会作为**最新的工具结果**再进一次上下文。
+ * 技能写的是一套从头开始的流程，模型拿到它就从第一步重新执行 —— 真机上 game-jam
+ * 五轮里加载了四次，每次都把「先问五个问题」的访谈重来一遍，用户答过的全白答。
+ *
+ * 判据只认「原文还在」：找一条 `load_skill` 的成功结果，技能名对得上、文字以同一份
+ * 正文开头。被压缩进摘要的、被大结果存档换成存根的都不算 —— 那时正文确实不在了，
+ * 重新加载是对的。
+ */
+export function skillBodyVisible(
+  messages: readonly unknown[],
+  name: string,
+  content: string
+): boolean {
+  const head = content.slice(0, 400)
+  return messages.some((raw) => {
+    const m = raw as {
+      role?: string
+      toolName?: string
+      isError?: boolean
+      details?: { skillName?: string }
+      content?: unknown
+    }
+    if (m.role !== 'toolResult' || m.toolName !== 'load_skill' || m.isError) return false
+    if (m.details?.skillName !== name) return false
+    const blocks = Array.isArray(m.content) ? m.content : []
+    const text = blocks
+      .map((b) =>
+        (b as { type?: string }).type === 'text' ? ((b as { text?: string }).text ?? '') : ''
+      )
+      .join('')
+    return text.startsWith(head)
+  })
+}
+
+/** `createSkillTools` 的可选接缝，都由持有 Agent 的一方提供 */
+export interface SkillToolHooks {
+  /**
+   * 这个技能的正文是否还在模型刚看到的上下文里（判据见 `skillBodyVisible`）。
+   * 不给就当不在 —— 外部 MCP 宿主看不到对话，照旧每次给全文。
+   */
+  bodyVisible?: (name: string, content: string) => boolean
+}
+
+/**
  * 造出 load_skill / read_skill_resource 两个工具。
  *
  * `mode` 决定要不要在正文后面追那句「发现不对就回头改」—— 关档时
@@ -626,7 +672,8 @@ const ITERATION_NUDGE =
 export function createSkillTools(
   skills: SkillMetadata[],
   mode: SkillLearningMode = 'ask',
-  loadTools?: (content: string) => ToolOutcome
+  loadTools?: (content: string) => ToolOutcome,
+  hooks: SkillToolHooks = {}
 ): UnrealAgentTool<unknown>[] {
   if (skills.length === 0) return []
 
@@ -651,6 +698,22 @@ export function createSkillTools(
 
       const content = rewriteCrossReferences(result.content)
       const loaded = loadTools?.(content)
+      if (hooks.bodyVisible?.(result.name, content)) {
+        // 不再贴一遍正文。工具照常补加载（幂等，正文点名的工具这一轮可能还没装上）
+        return {
+          text:
+            `技能 "${result.name}" 已经加载过，正文就在上文那次 load_skill 的结果里，内容没变，这次不再重复。` +
+            '接着当前进度往下做：不要从技能的第一步重来，用户已经回答过的问题不要再问。' +
+            (loaded?.text ? `\n\n${loaded.text}` : ''),
+          details: {
+            skillName: result.name,
+            skillDirectory: result.skillDirectory,
+            source: result.source,
+            alreadyLoaded: true,
+            ...(loaded?.details ? { toolSearch: loaded.details } : {})
+          }
+        }
+      }
       return {
         // 正文里的工具名同样要重写 —— 否则模型会照着技能的指示
         // 去调 blueprint.add_node，而注册的是 blueprint_add_node

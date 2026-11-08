@@ -25,6 +25,7 @@ import {
   readDisabledSkills,
   readSkillDocument,
   setSkillDisabled,
+  skillBodyVisible,
   SKILL_CREATOR_NAME,
   userSkillsDir,
   writeSkillDocument
@@ -278,6 +279,124 @@ describe('load_skill', () => {
     await expect(loadSkillTool.execute('c1', { name: '不存在的技能' })).rejects.toThrow(
       /ue-blueprint-graph-wiring/
     )
+  })
+})
+
+/**
+ * 真机上 game-jam 五轮里加载了四次：每次正文都作为最新的工具结果进上下文，
+ * 模型就从「先问五个问题」重来一遍，用户答过的全白答。
+ */
+describe('重复加载去重', () => {
+  const NAME = 'ue-blueprint-graph-wiring'
+
+  /** 按 pi 落盘的样子包一条工具结果 */
+  function asToolResult(
+    result: { content: unknown[]; details?: unknown },
+    extra: Record<string, unknown> = {}
+  ): Record<string, unknown> {
+    return {
+      role: 'toolResult',
+      toolCallId: 't1',
+      toolName: 'load_skill',
+      content: result.content,
+      details: result.details,
+      isError: false,
+      ...extra
+    }
+  }
+
+  function wiredWith(
+    view: () => unknown[],
+    loadTools = vi.fn(() => ({ text: '', details: {} }))
+  ): { load: (typeof tools)[number]; loadTools: typeof loadTools } {
+    const wired = createSkillTools(skills, 'ask', loadTools, {
+      bodyVisible: (name, content) => skillBodyVisible(view(), name, content)
+    })
+    return { load: wired.find((t) => t.name === 'load_skill')!, loadTools }
+  }
+
+  it('正文还在上下文里：第二次只回一句话，不再贴正文，工具照常补加载', async () => {
+    let view: unknown[] = []
+    const { load, loadTools } = wiredWith(() => view)
+
+    const first = await load.execute('c1', { name: NAME })
+    expect((first.content[0] as { text: string }).text).toContain('# 流程')
+    view = [asToolResult(first)]
+
+    const second = await load.execute('c2', { name: NAME })
+    const text = (second.content[0] as { text: string }).text
+    expect(text).not.toContain('# 流程')
+    expect(text).not.toContain('proven wrong')
+    expect(text).toContain('已经加载过')
+    expect(text).toContain('不要再问')
+    expect(second.details).toMatchObject({ skillName: NAME, alreadyLoaded: true })
+    expect(loadTools).toHaveBeenCalledTimes(2)
+  })
+
+  it('那一次「不再重复」的回执本身不算正文：正文被压掉后照样能重新加载', async () => {
+    let view: unknown[] = []
+    const { load } = wiredWith(() => view)
+    const first = await load.execute('c1', { name: NAME })
+    view = [asToolResult(first)]
+    const second = await load.execute('c2', { name: NAME })
+    // 压缩把第一次的正文换成了摘要，只剩那条短回执
+    view = [{ role: 'user', content: '（摘要）' }, asToolResult(second)]
+
+    const third = await load.execute('c3', { name: NAME })
+    expect((third.content[0] as { text: string }).text).toContain('# 流程')
+  })
+
+  it.each([
+    ['正文已被压缩进摘要', () => [{ role: 'user', content: [{ type: 'text', text: '（摘要）' }] }]],
+    [
+      '上下文里是另一个技能',
+      () => [
+        {
+          role: 'toolResult',
+          toolName: 'load_skill',
+          isError: false,
+          details: { skillName: 'ue-material-create-pbr' },
+          content: [{ type: 'text', text: '# 流程\n\n用 material_create 起手。' }]
+        }
+      ]
+    ],
+    [
+      '那次加载失败了',
+      () => [
+        {
+          role: 'toolResult',
+          toolName: 'load_skill',
+          isError: true,
+          details: { skillName: NAME },
+          content: [{ type: 'text', text: '技能不存在' }]
+        }
+      ]
+    ],
+    [
+      '大结果存档把正文换成了存根',
+      () => [
+        {
+          role: 'toolResult',
+          toolName: 'load_skill',
+          isError: false,
+          details: { skillName: NAME },
+          content: [{ type: 'text', text: '[结果已存档，用 query_result 查看]' }]
+        }
+      ]
+    ]
+  ])('%s：照常给全文', async (_label, view) => {
+    const { load } = wiredWith(view)
+    const result = await load.execute('c1', { name: NAME })
+    expect((result.content[0] as { text: string }).text).toContain('# 流程')
+    expect(result.details).not.toHaveProperty('alreadyLoaded')
+  })
+
+  it('不给接缝（外部 MCP 宿主）：每次都给全文', async () => {
+    const plain = createSkillTools(skills, 'ask').find((t) => t.name === 'load_skill')!
+    for (const id of ['c1', 'c2']) {
+      const result = await plain.execute(id, { name: NAME })
+      expect((result.content[0] as { text: string }).text).toContain('# 流程')
+    }
   })
 })
 

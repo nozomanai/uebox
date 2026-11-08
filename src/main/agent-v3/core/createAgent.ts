@@ -22,7 +22,9 @@ import {
   buildSkillsSection,
   createSkillTools,
   discoverEnabledSkills,
-  type SkillLearningMode
+  skillBodyVisible,
+  type SkillLearningMode,
+  type SkillToolHooks
 } from '../capabilities/skills'
 import { buildUserInstructionsSection } from '../capabilities/userInstructions'
 import type { SkillMetadata } from '../../agent-v3/capabilities/skillsService/SkillsService'
@@ -631,14 +633,17 @@ export function resolveAgentTools(
   taskTool?: UnrealAgentTool<never>,
   loadSkillTools?: Parameters<typeof createSkillTools>[2],
   /** 查存档大结果的工具（见 `core/resultArchive.ts`）。和 task 一样要引用 Agent 实例，由调用方造 */
-  resultQueryTool?: UnrealAgentTool<never>
+  resultQueryTool?: UnrealAgentTool<never>,
+  /** 技能工具要看对话的接缝（重复加载去重），同样要引用 Agent 实例 */
+  skillHooks?: SkillToolHooks
 ): UnrealAgentTool<never>[] {
   const tools = resolveCandidateTools(ctx)
   tools.push(
     ...(createSkillTools(
       skills,
       ctx.skillLearning ?? 'ask',
-      loadSkillTools
+      loadSkillTools,
+      skillHooks
     ) as unknown as UnrealAgentTool<never>[])
   )
 
@@ -818,12 +823,17 @@ export async function createUnrealAgent(ctx: SessionContext): Promise<CreatedAge
    * 就只看命名空间和名字，先滤后滤结果一样。
    */
 
+  /** 最近一次真正发给模型的上下文（压缩后的视图）。下面 `transformContext` 和超长补救两处更新 */
+  let sentContext: readonly unknown[] | undefined
   const resolvedTools = resolveAgentTools(
     { ...ctx, ueConnected: true },
     skills,
     taskTool,
     ctx.toolSearchEnabled ? (content) => search!.loadFromSkill(content) : undefined,
-    resultQueryTool
+    resultQueryTool,
+    // 看的是**最近一次真正发给模型的那份**（压缩之后的视图），不是 `state.messages`：
+    // 正文被压进摘要以后 state 里还留着原文，按它判断会把重新加载错拦下来
+    { bodyVisible: (name, content) => skillBodyVisible(sentContext ?? [], name, content) }
   )
   // 工作室模式的工具排在授权过滤之后追加：招人时要把制作人手上有哪些命名空间
   // 写进描述，得先有那份清单。它们全是 `core` / safe，过滤本来也不会拿掉它们
@@ -954,8 +964,11 @@ export async function createUnrealAgent(ctx: SessionContext): Promise<CreatedAge
   // 厂商回「上下文超长」时缩输出上限或当场压缩再重发一次，见 `contextOverflow.ts`。
   // 包在卡死重发外面：超长不是网关的事，重发同一个请求只会再被拒一次
   const recovering = overflowRecoveringStreamFn(streamFn, {
-    compact: async (signal) =>
-      (await autoCompact.compactForOverflow(signal)) as Message[] | undefined,
+    compact: async (signal) => {
+      const view = (await autoCompact.compactForOverflow(signal)) as Message[] | undefined
+      if (view) sentContext = view
+      return view
+    },
     onRecover: ({ action, reason }) =>
       logger.warn(
         `[AgentV3] 会话 ${ctx.sessionId} 上下文超长，${action === 'shrink-output' ? '缩小输出上限' : '当场压缩'}后重发：${reason.slice(0, 200)}`
@@ -990,7 +1003,11 @@ export async function createUnrealAgent(ctx: SessionContext): Promise<CreatedAge
       systemPrompt: systemPromptFor(ctx),
       tools: tools as unknown as AgentTool<never>[]
     },
-    transformContext: autoCompact,
+    transformContext: async (messages, signal) => {
+      const view = await autoCompact(messages, signal)
+      sentContext = view
+      return view
+    },
     /*
      * 引擎状态中途变了就把工具清单和环境块换掉。
      *
