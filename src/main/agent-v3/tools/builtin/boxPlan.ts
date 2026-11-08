@@ -95,10 +95,15 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
 
       if (args.action === 'status') {
         const state = await service.planStateNow()
-        const lines = [describePlanState(state)]
+        const pending = !state.connected && service.hasPendingConnection()
+        const lines = [
+          pending
+            ? 'Box Plan 已授权，模型还没导入（领完套餐后 import）。'
+            : describePlanState(state)
+        ]
         let claimed: boolean | undefined
         let expiresAt: string | null | undefined
-        if (state.connected) {
+        if (state.connected || pending) {
           const campaign = await service.campaignStatus()
           if (campaign.ok) {
             claimed = campaign.data.claimed
@@ -114,12 +119,18 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
         }
         return {
           text: lines.join('\n'),
-          details: { action: 'status', connected: state.connected, claimed, expiresAt }
+          details: { action: 'status', connected: state.connected || pending, claimed, expiresAt }
         }
       }
 
       if (args.action === 'connect') {
         const before = await service.planStateNow()
+        if (service.hasPendingConnection()) {
+          return {
+            text: '已经授权过了，不用再连。接着 claim_megajam 或 import。',
+            details: { action: 'connect', connected: true }
+          }
+        }
         if (before.connected && before.error !== 'unauthorized') {
           return {
             text: `已经连着，不用再连。${describePlanState(before)}`,

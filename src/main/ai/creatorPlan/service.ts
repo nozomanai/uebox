@@ -52,6 +52,24 @@ import { applyPlanStorage, planStoragePreview, restorePlanStorage } from './stor
 let pending: AbortController | null = null
 /** 预览时拉到的清单，确认导入时直接用，不再拉一次 */
 let pendingManifest: CreatorPlanManifest | null = null
+/**
+ * 授权拿到了 Key、还没导入（来源没落盘）时的连接。
+ *
+ * 来源要等导入才写进设置，可领活动套餐不该等导入：没有套餐的新账户导入了也没有模型，
+ * 得先领、再导入。领取、预览先看已落盘的连接，没有就用这一份。导入或断开后清掉；
+ * 应用重启就没了（Key 还在安全存储里，重新连接一次即可）。
+ */
+let pendingConnection: { baseUrl: string; apiKey: string } | null = null
+
+/** 已落盘的连接，没有就用刚授权、还没导入的那份 */
+async function activeConnection(): Promise<{ baseUrl: string; apiKey: string | null } | null> {
+  return (await planConnection()) ?? pendingConnection
+}
+
+/** 授权已经拿到 Key、还没导入 */
+export function hasPendingConnection(): boolean {
+  return pendingConnection !== null
+}
 
 export function failResult(error: unknown): {
   ok: false
@@ -132,6 +150,7 @@ export async function connectPlan(options: {
     // Key 先存进安全存储；来源和绑定等用户在预览里确认后才落盘
     await saveLiteralKey(PLAN_KEY_ID, issued.apiKey)
     pendingManifest = manifest
+    pendingConnection = { baseUrl: issued.baseUrl, apiKey: issued.apiKey }
     return await preview(manifest)
   } finally {
     options.signal?.removeEventListener('abort', onAbort)
@@ -146,7 +165,7 @@ export function cancelConnect(): void {
 
 /** 已连接时重新拉清单，回导入预览 */
 export async function previewPlan(): Promise<CreatorPlanPreview> {
-  const conn = await planConnection()
+  const conn = await activeConnection()
   if (!conn) throw new CreatorPlanError('not_connected', 'Not connected')
   if (!conn.apiKey) throw new CreatorPlanError('unauthorized', 'Key missing')
   const manifest = await fetchFresh(conn.baseUrl, conn.apiKey)
@@ -173,6 +192,7 @@ export async function applyPlanRoles(
   )
   await applyPlanStorage(manifest, options?.storage)
   pendingManifest = null
+  pendingConnection = null
   return {
     connected: true,
     summary: planSummary(manifest),
@@ -190,6 +210,7 @@ export async function applyPlanRoles(
  */
 export async function disconnectPlan(): Promise<CreatorPlanDisconnectResult> {
   pendingManifest = null
+  pendingConnection = null
   const conn = await planConnection()
   // 本机连 Key 都没有了，服务端那把也吊销不了，同样提示去网页端
   const revoked = conn?.apiKey ? await revokeKey(conn.baseUrl, conn.apiKey) : false
@@ -211,7 +232,7 @@ const NO_CAMPAIGN: CreatorPlanCampaign = {
 
 /** 活动状态（MegaJam）。没连接时回「没有活动」，不发请求 */
 export async function campaignStatus(): Promise<CreatorPlanResult<CreatorPlanCampaign>> {
-  const conn = await planConnection()
+  const conn = await activeConnection()
   if (!conn?.apiKey) return { ok: true, data: NO_CAMPAIGN }
   return fetchCampaign(conn.baseUrl, conn.apiKey)
 }
@@ -220,7 +241,7 @@ export async function campaignStatus(): Promise<CreatorPlanResult<CreatorPlanCam
 export async function claimPlanCampaign(
   itchUrl: string
 ): Promise<CreatorPlanResult<{ expiresAt: string | null }>> {
-  const conn = await planConnection()
+  const conn = await activeConnection()
   if (!conn) return { ok: false, code: 'not_connected', error: 'Not connected' }
   if (!conn.apiKey) return { ok: false, code: 'unauthorized', error: 'Key missing' }
   const result = await claimCampaign(conn.baseUrl, conn.apiKey, String(itchUrl ?? ''))

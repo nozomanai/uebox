@@ -10,6 +10,7 @@ const service = {
   claimPlanCampaign: vi.fn(),
   previewPlan: vi.fn(),
   applyPlanRoles: vi.fn(),
+  hasPendingConnection: vi.fn(() => false),
   failResult: vi.fn((error: unknown) => ({
     ok: false,
     code: (error as { code?: string }).code ?? 'unknown',
@@ -49,6 +50,7 @@ const run = (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  service.hasPendingConnection.mockReturnValue(false)
 })
 
 describe('box_plan', () => {
@@ -134,5 +136,20 @@ describe('box_plan', () => {
 
   it('默认勾选规则来自预览', () => {
     expect(defaultImportRoles(preview({ a: true, b: false }))).toEqual(['a'])
+  })
+
+  it('刚授权、还没导入：算连着，不再弹浏览器；status 照样能看活动', async () => {
+    service.hasPendingConnection.mockReturnValue(true)
+    service.planStateNow.mockResolvedValue(disconnected)
+    await run({ action: 'connect' })
+    expect(service.connectPlan).not.toHaveBeenCalled()
+
+    service.campaignStatus.mockResolvedValueOnce({
+      ok: true,
+      data: { open: true, claimed: false, planTitle: 'MegaJam', claimUntil: null, expiresAt: null }
+    })
+    const status = await run({ action: 'status' })
+    expect(status.details.connected).toBe(true)
+    expect(service.campaignStatus).toHaveBeenCalled()
   })
 })

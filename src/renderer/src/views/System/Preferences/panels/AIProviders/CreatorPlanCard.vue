@@ -94,6 +94,8 @@ async function claimCampaign(): Promise<void> {
     itchUrl.value = ''
     await load()
     emit('changed')
+    // 套餐变了，模型清单跟着变：直接弹导入预览，让用户把新模型接上
+    await reimport()
   } finally {
     claiming.value = false
   }
