@@ -360,6 +360,7 @@ import SuggestionCards, { type SuggestionItem } from './components/SuggestionCar
 import ChatLog, { type ChatMessage } from './components/ChatLog.vue'
 import AgentBrowserPane from './components/AgentBrowserPane.vue'
 import FileReviewPane from './components/FileReviewPane.vue'
+import { conversationToMarkdown } from './composables/devlogMarkdown'
 import { provideFileReview } from './composables/useFileReview'
 import { useSessionBrowser } from './composables/useSessionBrowser'
 import { useChatSessionsStore, type BoundNotebook } from '../../store/modules/chatSessions'
@@ -2344,15 +2345,15 @@ function exportAsJSON(): void {
  * 导出当前对话为Markdown文件。
  */
 function exportAsMarkdown(): void {
-  const lines = messages.value.map((m) => {
-    const prefix = m.role === 'user' ? t('assistant.export.user') : t('assistant.export.assistant')
-    const content = String(m.content || '')
-    if (content.includes('\n')) {
-      return `${prefix}：\n\n\`\`\`\n${content}\n\`\`\`\n`
-    }
-    return `${prefix}：${content}`
+  const markdown = conversationToMarkdown(messages.value, {
+    user: t('assistant.export.user'),
+    assistant: t('assistant.export.assistant'),
+    tools: t('assistant.export.tools'),
+    changes: t('assistant.export.changes'),
+    failed: t('assistant.export.failed'),
+    turn: (index) => t('assistant.export.turn', { n: index })
   })
-  const blob = new Blob([lines.join('\n\n')], { type: 'text/markdown' })
+  const blob = new Blob([markdown], { type: 'text/markdown' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

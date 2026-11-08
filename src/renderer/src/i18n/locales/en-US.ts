@@ -2669,7 +2669,11 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
     },
     export: {
       user: 'User',
-      assistant: 'Assistant'
+      assistant: 'Assistant',
+      tools: 'Tools',
+      changes: 'Changes',
+      failed: 'failed',
+      turn: 'Turn {n}'
     },
     teamBoard: {
       external: {

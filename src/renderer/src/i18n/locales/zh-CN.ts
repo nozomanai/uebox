@@ -2605,7 +2605,11 @@ export default {
     },
     export: {
       user: '用户',
-      assistant: '助手'
+      assistant: '助手',
+      tools: '工具',
+      changes: '改动',
+      failed: '未生效',
+      turn: '第 {n} 轮'
     },
     teamBoard: {
       external: {
