@@ -42,9 +42,13 @@ Nothing of the game may be made before the start. Setup is allowed and expected.
    everything in English, Unreal Engine or UEFN but not both. Every team member joins the jam
    with their own itch.io account.
 2. **Box version**: UE Box 1.0.12 or later. Older versions cannot claim the MegaJam plan.
-3. **Model**: Settings → Models. Either the player's own provider, or Box Plan:
-   Settings → Models → Box Plan → Connect, then fill the itch.io profile in the
-   "MegaJam 激励套餐" row and press Claim. The plan lasts 7 days and covers the jam.
+3. **Model**: the player's own provider, or the MegaJam plan on Box Plan (7 days, covers the
+   jam). Offer to set it up: `box_plan` with `status` first, then only the missing steps —
+   `connect` (tell the player a browser page opens and they must log in and press Allow
+   themselves), `claim_megajam` (ask for their itch.io profile URL first, never guess it),
+   `import` (wires the plan's models into the roles the player has not configured; takes effect
+   from the next message). The player can also do it by hand: Settings → Models → Box Plan →
+   Connect, then the "MegaJam 激励套餐" row → itch.io profile → Claim.
 4. **Project**: make an empty UE 5.x project for the jam (Blueprint template unless the player
    writes C++ daily). Project library → Import → install the UnrealAgentLink plugin → Open.
    Check the link by asking how many lights the level has; a number back means it works.

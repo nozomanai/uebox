@@ -28,6 +28,7 @@ import { taskVideoTools } from './builtin/taskVideo'
 import { engineTools } from './builtin/engines'
 import { projectPackageTools } from './builtin/projectPackage'
 import { createRecordGameplayTool } from './builtin/recordGameplay'
+import { createBoxPlanTool } from './builtin/boxPlan'
 import { createProjectUpdatePluginTool } from './adapted/project/updatePlugin'
 import { createWebTools } from './builtin/web'
 import { createLocalFileTools } from './builtin/localFiles'
@@ -1284,6 +1285,8 @@ export function listToolRisks(): Record<string, ToolRisk> {
   for (const tool of projectPackageTools()) {
     table[tool.name] = tool.unrealBox.risk
   }
+  const boxPlan = createBoxPlanTool()
+  table[boxPlan.name] = boxPlan.unrealBox.risk
   const recordGameplay = createRecordGameplayTool()
   table[recordGameplay.name] = recordGameplay.unrealBox.risk
   // 装 / 更新插件会关掉再重开编辑器，同样不在 REGISTRATIONS 里
@@ -1459,6 +1462,8 @@ export function buildAllTools(deps: BuildToolsDeps = {}): UnrealAgentTool<never>
     ...projectPackageTools(),
     // 录玩法视频：录打包版窗口或 PIE 窗口，不依赖编辑器连接
     createRecordGameplayTool() as unknown as UnrealAgentTool<never>,
+    // 对话里替用户连接 Box Plan、领 MegaJam 套餐、导入模型。登录和「允许」仍由用户在浏览器里点
+    createBoxPlanTool() as unknown as UnrealAgentTool<never>,
     // 装 / 更新工程里的插件。插件太旧或没装上时引擎正连不上，所以同样不在 ue.* 下
     createProjectUpdatePluginTool() as unknown as UnrealAgentTool<never>,
     // 会话体检。命名空间在 `ue.system` 下，但它**不依赖引擎连接** ——
