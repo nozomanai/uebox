@@ -373,6 +373,13 @@ export const mcpServerAPI = {
   rotateToken() {
     return window.api.agentV3.mcpServer.rotateToken()
   },
+  /**
+   * 写进外部客户端的配置。回 `{ success, path?, error? }` 不抛：
+   * 用户点一下就发一次，失败原因（配置文件解析不了）要原样显示给他。
+   */
+  installClient(client: 'claude-code' | 'codex') {
+    return window.api.agentV3.mcpServer.installClient(client)
+  },
   /** 保存配置；运行中变更会自动重启，失败时抛出具体原因给界面 */
   async saveConfig(args: { port?: number; includeMutating?: boolean }) {
     const result = await window.api.agentV3.mcpServer.saveConfig(args)

@@ -19,6 +19,7 @@ const status = vi.fn()
 const start = vi.fn()
 const stop = vi.fn()
 const rotateToken = vi.fn()
+const installClient = vi.fn()
 const saveConfig = vi.fn()
 const writeText = vi.fn().mockResolvedValue(undefined)
 const getSettings = vi.fn()
@@ -147,7 +148,7 @@ beforeEach(() => {
         removeServer: removeServerIpc,
         saveServer: saveServerIpc
       },
-      mcpServer: { status, start, stop, rotateToken, saveConfig }
+      mcpServer: { status, start, stop, rotateToken, saveConfig, installClient }
     },
     platform: 'win32',
     dialog: { showOpenDialog }
@@ -285,6 +286,18 @@ describe('渐进披露', () => {
    * 最右那个红色的「重置」还紧挨着「复制令牌」—— 而同一页里「删除」被特意推到
    * 最右、和状态胶囊隔开。破坏性动作降级成链接，并且推到最右。
    */
+  it('写入 Claude Code：调主进程写配置，成功后提示文件位置', async () => {
+    installClient.mockResolvedValue({ success: true, path: 'C:/Users/me/.claude.json' })
+    const wrapper = await mountPanel()
+    await openDisclosure(wrapper, '连接配置')
+
+    const link = wrapper.findAll('.row-actions .link').find((b) => b.text() === '写入 Claude Code')!
+    await link.trigger('click')
+    await flushPromises()
+
+    expect(installClient).toHaveBeenCalledWith('claude-code')
+  })
+
   it('复制配置是唯一的按钮，破坏性的重置降级成最右边的链接', async () => {
     const wrapper = await mountPanel()
     await openDisclosure(wrapper, '连接配置')
@@ -294,7 +307,7 @@ describe('渐进披露', () => {
     expect(actions.find('.app-button').text()).toBe('复制配置')
 
     const links = actions.findAll('.link').map((b) => b.text())
-    expect(links).toEqual(['只复制令牌', '重置令牌'])
+    expect(links).toEqual(['写入 Claude Code', '写入 Codex', '只复制令牌', '重置令牌'])
     expect(actions.find('.link.danger').text()).toBe('重置令牌')
   })
 

@@ -79,6 +79,7 @@ import {
   type McpSettings
 } from '../agent-v3/capabilities/mcp'
 import { clientConfigSnippet, hostUrl } from '../agent-v3/capabilities/mcp/hostStore'
+import { installMcpClient, type McpClientId } from '../agent-v3/capabilities/mcp/clientInstall'
 import { listToolCatalog, listToolRisks } from '../agent-v3/tools/registry'
 import {
   restoreAssetSnapshot,
@@ -3957,6 +3958,21 @@ export function registerAgentV3IPC(): void {
   }))
 
   ipcMain.handle('agent-v3:mcp-server:status', async () => withHostSettings(mcpServerStatus()))
+
+  /**
+   * 把对外 MCP 写进 Claude Code / Codex 的用户级配置。服务没开就顺手开起来 ——
+   * 写好了配置、服务却没跑，用户在客户端里看到的只是一条「连接失败」。
+   */
+  ipcMain.handle('agent-v3:mcp-server:install-client', async (_event, client: McpClientId) => {
+    try {
+      const { path } = await installMcpClient(client)
+      let status = mcpServerStatus()
+      if (!status.running) status = await startMcpServer(mcpSessionSource, {})
+      return { success: true, path, status: await withHostSettings(status) }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
+  })
 
   /**
    * 保存端口 / 暴露范围。运行中有变化时自动重启服务，让新权限立即生效。

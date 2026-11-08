@@ -3853,6 +3853,13 @@ declare global {
         status: () => Promise<McpServerHostView>
         /** 换新令牌，旧的客户端配置随即失效 */
         rotateToken: () => Promise<{ success: boolean; status: McpServerHostView }>
+        /** 写进 Claude Code / Codex 的用户级配置，服务没开就一起开 */
+        installClient: (client: 'claude-code' | 'codex') => Promise<{
+          success: boolean
+          path?: string
+          error?: string
+          status?: McpServerHostView
+        }>
         /** 保存端口 / 暴露范围；运行中变更会自动重启服务 */
         saveConfig: (args: {
           port?: number

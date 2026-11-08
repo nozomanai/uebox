@@ -346,6 +346,11 @@ First work out why the install failed from the output above. If you can run comm
       clientConfig: 'Connection config',
       copyConfig: 'Copy config',
       copyToken: 'Copy token only',
+      installClaudeCode: 'Add to Claude Code',
+      installCodex: 'Add to Codex',
+      installedClaudeCode: 'Added to Claude Code config ({path}). Restart Claude Code to use it.',
+      installedCodex: 'Added to Codex config ({path}). Restart Codex to use it.',
+      installFailed: 'Could not write the config: {error}',
       copied: 'Copied',
       tokenMasked: 'Only the ends are shown; use “Copy token” for the full value',
       // "Reset" alone does not say what it resets, and it sits beside two copy actions.

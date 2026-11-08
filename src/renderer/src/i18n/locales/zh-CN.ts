@@ -353,6 +353,11 @@ export default {
       clientConfig: '连接配置',
       copyConfig: '复制配置',
       copyToken: '只复制令牌',
+      installClaudeCode: '写入 Claude Code',
+      installCodex: '写入 Codex',
+      installedClaudeCode: '已写入 Claude Code 配置（{path}），重启 Claude Code 后生效',
+      installedCodex: '已写入 Codex 配置（{path}），重启 Codex 后生效',
+      installFailed: '写入失败：{error}',
       copied: '已复制',
       tokenMasked: '出于安全考虑仅显示首尾字符，完整令牌请点击「复制令牌」',
       // 「重置」两个字单看不知道重置什么，而它旁边就是两个复制动作

@@ -1063,6 +1063,28 @@ async function toggleHost(): Promise<void> {
  * 明确二次确认：一按下去，所有已经配好这个服务的外部客户端立刻连不上，
  * 得挨个重新粘配置。用户想要的场景是「令牌泄露了」，不该手滑触发。
  */
+const installing = ref<'' | 'claude-code' | 'codex'>('')
+
+async function installClient(client: 'claude-code' | 'codex'): Promise<void> {
+  if (installing.value) return
+  installing.value = client
+  try {
+    const result = await mcpServerAPI.installClient(client)
+    if (result.status) applyHost(result.status)
+    if (result.success) {
+      message.success(
+        t(client === 'codex' ? 'mcp.server.installedCodex' : 'mcp.server.installedClaudeCode', {
+          path: result.path
+        })
+      )
+    } else {
+      message.error(t('mcp.server.installFailed', { error: result.error ?? '' }))
+    }
+  } finally {
+    installing.value = ''
+  }
+}
+
 async function rotateToken(): Promise<void> {
   if (hostBusy.value) return
   if (!window.confirm(t('mcp.server.rotateConfirm'))) return
@@ -1867,6 +1889,16 @@ onMounted(load)
                 <AppButton variant="primary" size="medium" @click="copy('config')">
                   {{ copied === 'config' ? t('mcp.server.copied') : t('mcp.server.copyConfig') }}
                 </AppButton>
+                <button
+                  class="link"
+                  :disabled="installing !== ''"
+                  @click="installClient('claude-code')"
+                >
+                  {{ t('mcp.server.installClaudeCode') }}
+                </button>
+                <button class="link" :disabled="installing !== ''" @click="installClient('codex')">
+                  {{ t('mcp.server.installCodex') }}
+                </button>
                 <button class="link" @click="copy('token')">
                   {{ copied === 'token' ? t('mcp.server.copied') : t('mcp.server.copyToken') }}
                 </button>
