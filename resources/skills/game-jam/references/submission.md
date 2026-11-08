@@ -3,7 +3,9 @@
 ## Contents
 
 - Create the itch page (day two)
+- A page that sells
 - Upload the build
+- Plan the video
 - Host the video
 - The jam submission form
 - Declaration of tools prepared before the jam
@@ -20,6 +22,18 @@
    is used, credits (team, tools), sourced assets.
 5. Add 3–5 screenshots (`ue_screenshot` from gameplay) and the video link.
 
+## A page that sells
+
+Judges open many pages; the page decides whether they download.
+
+- Cover image 630×500: the game's best moment, the title readable at small size. Generate a
+  base with `generate_image` from a real screenshot, keep the real game recognisable.
+- First line: the one-sentence pitch, then the theme take in one line.
+- Controls in a small table.
+- 3–5 screenshots from real gameplay (`ue_screenshot`), the video embedded near the top.
+- Credits: team and roles, tools (UE Box and models), sourced assets with licences.
+- Known issues, if any, in one honest line.
+
 ## Upload the build
 
 - Zip from `project_zip_build`, named `TeamName_GameName.zip`, under 1 GB.
@@ -31,6 +45,21 @@
   1. Download butler from itch.io (itch.io/docs/butler), unzip it, run `butler login` once.
   2. `butler push TeamName_GameName.zip username/game-slug:windows`
   Offer to run these for the player only if they ask.
+
+## Plan the video
+
+30–60 seconds, planned with the player before recording:
+
+| Time | Shot |
+| --- | --- |
+| 0–5 s | Gameplay straight away — the core action, no logo screen |
+| 5–20 s | The theme mechanic in action, the moment that explains the game |
+| 20–40 s | Escalation: the hardest or most spectacular part |
+| 40–55 s | The ending or a win, then the title card |
+
+Record several takes with `record_gameplay_video`, pick the best. If the player wants cuts or
+a title card, a simple editor is enough; keep the music from the game. No other trademarks or
+logos in the video.
 
 ## Host the video
 
