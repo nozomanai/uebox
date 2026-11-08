@@ -2265,10 +2265,14 @@ declare global {
           import('../shared/creatorPlan').CreatorPlanCampaign
         >
       >
-      /** 领取活动套餐，填 itch.io 主页 */
+      /** 参赛登记，填 itch.io 主页 */
       claimCampaign: (
         itchUrl: string
       ) => Promise<import('../shared/creatorPlan').CreatorPlanResult<{ expiresAt: string | null }>>
+      /** 交卷，填 itch 作品页 */
+      submitCampaignEntry: (
+        entryUrl: string
+      ) => Promise<import('../shared/creatorPlan').CreatorPlanResult<{ entryUrl: string | null }>>
       onDeviceCode: (
         callback: (prompt: import('../shared/creatorPlan').CreatorPlanDevicePrompt) => void
       ) => () => void

@@ -143,3 +143,5 @@ Tools: UE Box <version>, <models>, <other tools>
 - [ ] Form filled in English with every member's Epic email and the Team Owner.
 - [ ] Sourced assets and tools prepared before the jam declared.
 - [ ] Submitted before 2026-11-16 09:59 Beijing time; the entry appears on the jam page.
+- [ ] On Box Plan: `box_plan` `submit_megajam_entry` with the public game page, for every team
+      member's own UE Box (this is what makes their jam usage refundable).

@@ -377,20 +377,33 @@ export type CreatorPlanErrorCode =
   | 'not_connected'
   | 'encryption_unavailable'
   | 'invalid_itch_url'
+  | 'itch_not_found'
+  | 'itch_taken'
   | 'already_claimed'
   | 'sold_out'
   | 'campaign_closed'
+  | 'invalid_entry_url'
+  | 'entry_not_found'
   | 'unknown'
 
-/** Box Plan 的活动（2026 Epic AI MegaJam）。开没开、发什么都由服务端决定 */
+/**
+ * Box Plan 的活动（2026 Epic AI MegaJam）。开没开、发什么都由服务端决定。
+ * 两步：参赛登记（填 itch 主页，送试用套餐）；交卷（填 itch 作品页，赛后按盒子用量返还）。
+ */
 export interface CreatorPlanCampaign {
+  /** 还能参赛登记 */
   open: boolean
-  /** 这个账户领过了（之前买过同一套餐也算） */
+  /** 这个账户登记过了（之前买过同一套餐也算） */
   claimed: boolean
   planTitle: string | null
   claimUntil: string | null
-  /** 领到的那份套餐的到期时间 */
+  /** 登记送的试用套餐的到期时间 */
   expiresAt: string | null
+  /** 还能交卷 */
+  submitOpen: boolean
+  submitUntil: string | null
+  /** 最后一次交的作品页，没交过为 null */
+  entryUrl: string | null
 }
 
 export type CreatorPlanResult<T> =

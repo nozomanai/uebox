@@ -1,7 +1,8 @@
 /**
- * Box Plan 的活动领取（目前只有 2026 Epic AI MegaJam）。
+ * Box Plan 的活动（目前只有 2026 Epic AI MegaJam）：参赛登记和交卷。
  *
- * 套餐直接开在盒子连着的那个账户上：选手不用另注册账户，也不用抄兑换码。
+ * 登记送的试用套餐直接开在盒子连着的那个账户上：选手不用另注册账户，也不用抄兑换码。
+ * 交卷只登记作品页；赛后服务端按比赛期间盒子 Key 的用量返到账户余额。
  * 服务端的入口只对盒子开放（用连接时拿到的 Key 认证），网页上没有。
  * 活动开没开、发的是哪个套餐、发没发完都由服务端决定，盒子只照着显示 ——
  * 比赛期间盒子冻结发版，活动要调整只能改服务端。
@@ -22,9 +23,13 @@ const CAMPAIGN_PATH = '/campaigns/megajam'
 /** 服务端回的错误码里，盒子认得、能给出具体文案的那几个 */
 const CLAIM_CODES = new Set<CreatorPlanErrorCode>([
   'invalid_itch_url',
+  'itch_not_found',
+  'itch_taken',
   'already_claimed',
   'sold_out',
   'campaign_closed',
+  'invalid_entry_url',
+  'entry_not_found',
   'unauthorized'
 ])
 
@@ -63,7 +68,16 @@ export async function fetchCampaign(
   if (res.status === 404) {
     return {
       ok: true,
-      data: { open: false, claimed: false, planTitle: null, claimUntil: null, expiresAt: null }
+      data: {
+        open: false,
+        claimed: false,
+        planTitle: null,
+        claimUntil: null,
+        expiresAt: null,
+        submitOpen: false,
+        submitUntil: null,
+        entryUrl: null
+      }
     }
   }
   if (!res.ok) return { ok: false, code: await errorCodeOf(res), error: `HTTP ${res.status}` }
@@ -76,12 +90,15 @@ export async function fetchCampaign(
       claimed: body.claimed === true,
       planTitle: str(body.plan_title),
       claimUntil: str(body.claim_until),
-      expiresAt: str(body.expires_at)
+      expiresAt: str(body.expires_at),
+      submitOpen: body.submit_open === true,
+      submitUntil: str(body.submit_until),
+      entryUrl: str(body.entry_url)
     }
   }
 }
 
-/** 领取。成功回套餐到期时间 */
+/** 参赛登记。成功回试用套餐到期时间 */
 export async function claimCampaign(
   baseUrl: string,
   apiKey: string,
@@ -102,4 +119,27 @@ export async function claimCampaign(
   if (!res.ok) return { ok: false, code: await errorCodeOf(res), error: `HTTP ${res.status}` }
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
   return { ok: true, data: { expiresAt: str(body?.expires_at) } }
+}
+
+/** 交卷：itch 上的作品页。可以重交，以最后一次为准。成功回规范化后的作品页地址 */
+export async function submitCampaignEntry(
+  baseUrl: string,
+  apiKey: string,
+  entryUrl: string,
+  fetchImpl: Fetch = fetch
+): Promise<CreatorPlanResult<{ entryUrl: string | null }>> {
+  let res: Response
+  try {
+    res = await fetchImpl(`${baseUrl}${CAMPAIGN_PATH}/submit`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ entry_url: entryUrl.trim() }),
+      signal: AbortSignal.timeout(15_000)
+    })
+  } catch (error) {
+    return networkFailure(error)
+  }
+  if (!res.ok) return { ok: false, code: await errorCodeOf(res), error: `HTTP ${res.status}` }
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null
+  return { ok: true, data: { entryUrl: str(body?.entry_url) } }
 }

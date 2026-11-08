@@ -437,9 +437,12 @@ describe('CreatorPlanCard · MegaJam 活动', () => {
   const campaignOpen = {
     open: true,
     claimed: false,
-    planTitle: 'MegaJam 激励套餐',
+    planTitle: 'MegaJam 参赛试用',
     claimUntil: null,
-    expiresAt: null
+    expiresAt: null,
+    submitOpen: false,
+    submitUntil: null,
+    entryUrl: null
   }
 
   it('活动开着、没领过：显示套餐名和领取；领取成功后显示到期时间并通知父组件', async () => {
@@ -458,11 +461,11 @@ describe('CreatorPlanCard · MegaJam 活动', () => {
     const wrapper = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
     await flushPromises()
 
-    expect(wrapper.find('.plan-campaign').text()).toContain('MegaJam 激励套餐')
+    expect(wrapper.find('.plan-campaign').text()).toContain('MegaJam 参赛登记')
     await wrapper.find('.itch-input').setValue('https://neon.itch.io')
     await wrapper
       .findAll('button')
-      .find((b) => b.text() === '领取')!
+      .find((b) => b.text() === '登记')!
       .trigger('click')
     await flushPromises()
 
@@ -485,6 +488,48 @@ describe('CreatorPlanCard · MegaJam 活动', () => {
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toBe('名额已发完')
     expect(wrapper.find('.itch-input').exists()).toBe(true)
+  })
+
+  it('能交卷：填作品页交卷，交过后显示作品页、按钮变成重新提交', async () => {
+    const campaign = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        data: { ...campaignOpen, open: false, claimed: true, submitOpen: true }
+      })
+      .mockResolvedValue({
+        ok: true,
+        data: {
+          ...campaignOpen,
+          open: false,
+          claimed: true,
+          submitOpen: true,
+          entryUrl: 'https://neon.itch.io/star-fort'
+        }
+      })
+    const submitCampaignEntry = vi.fn(async () => ({
+      ok: true,
+      data: { entryUrl: 'https://neon.itch.io/star-fort' }
+    }))
+    stubApi({
+      state: vi.fn(async () => ({ ok: true, data: connected })),
+      campaign,
+      submitCampaignEntry
+    })
+    const wrapper = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
+    await flushPromises()
+
+    expect(wrapper.findAll('.itch-input')).toHaveLength(1)
+    await wrapper.find('.itch-input').setValue('neon.itch.io/star-fort')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '交卷')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(submitCampaignEntry).toHaveBeenCalledWith('neon.itch.io/star-fort')
+    expect(wrapper.find('.plan-campaign').text()).toContain('https://neon.itch.io/star-fort')
+    expect(wrapper.findAll('button').some((b) => b.text() === '重新提交')).toBe(true)
   })
 
   it('活动没开、没连接、服务端不支持：都不显示', async () => {

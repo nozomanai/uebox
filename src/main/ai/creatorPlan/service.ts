@@ -45,7 +45,7 @@ import { readOrCreateDeviceId } from './deviceId'
 import { CREATOR_PLAN_KEYS_URL, CREATOR_PLAN_ORIGIN } from './endpoint'
 import { clearPlanState, readPlanState, updatePlanState, writePlanState } from './planState'
 import { planConnection, refreshPlan } from './refresh'
-import { claimCampaign, fetchCampaign } from './campaign'
+import { claimCampaign, fetchCampaign, submitCampaignEntry } from './campaign'
 import { applyPlanStorage, planStoragePreview, restorePlanStorage } from './storage'
 
 /** 正在进行的设备授权，用来取消 */
@@ -227,7 +227,10 @@ const NO_CAMPAIGN: CreatorPlanCampaign = {
   claimed: false,
   planTitle: null,
   claimUntil: null,
-  expiresAt: null
+  expiresAt: null,
+  submitOpen: false,
+  submitUntil: null,
+  entryUrl: null
 }
 
 /** 活动状态（MegaJam）。没连接时回「没有活动」，不发请求 */
@@ -237,7 +240,7 @@ export async function campaignStatus(): Promise<CreatorPlanResult<CreatorPlanCam
   return fetchCampaign(conn.baseUrl, conn.apiKey)
 }
 
-/** 领取活动套餐，成功后刷新清单（额度、到期时间）；刷新失败不影响领取结果 */
+/** 参赛登记，成功后刷新清单（额度、到期时间）；刷新失败不影响登记结果 */
 export async function claimPlanCampaign(
   itchUrl: string
 ): Promise<CreatorPlanResult<{ expiresAt: string | null }>> {
@@ -247,6 +250,16 @@ export async function claimPlanCampaign(
   const result = await claimCampaign(conn.baseUrl, conn.apiKey, String(itchUrl ?? ''))
   if (result.ok) await refreshPlan().catch(() => undefined)
   return result
+}
+
+/** 交卷：登记 itch 上的作品页 */
+export async function submitPlanCampaignEntry(
+  entryUrl: string
+): Promise<CreatorPlanResult<{ entryUrl: string | null }>> {
+  const conn = await activeConnection()
+  if (!conn) return { ok: false, code: 'not_connected', error: 'Not connected' }
+  if (!conn.apiKey) return { ok: false, code: 'unauthorized', error: 'Key missing' }
+  return submitCampaignEntry(conn.baseUrl, conn.apiKey, String(entryUrl ?? ''))
 }
 
 /**

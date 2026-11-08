@@ -93,13 +93,28 @@ Epic may ask for these materials or for version-control history. Not allowed: ga
 or art made before the start. Declare everything prepared earlier (template in
 `submission.md`).
 
-## The MegaJam plan in UE Box
+## MegaJam on Box Plan
 
-- Claimed inside UE Box only: Settings → Models → Box Plan → Connect, then the
-  "MegaJam 激励套餐" row → itch.io profile → Claim. There is no claim page on the web.
-- One plan per account, 7 days, applied to the account UE Box is connected to. Each team member
-  claims with their own account.
-- Claiming closes at the submission deadline or when all plans are claimed.
-- Error messages: wrong link format (use the profile URL, `https://name.itch.io`), already
-  claimed, all claimed, claiming ended.
-- When the quota runs out, switch models in Settings → Models; nothing in the project is lost.
+Two steps, both inside UE Box only (no page on the web), both on the account UE Box is
+connected to. Each team member does them with their own account.
+
+1. **Register** — Settings → Models → Box Plan → Connect, then the "MegaJam 参赛登记" row →
+   itch.io profile → 登记 (or `box_plan` `claim_megajam`). Adds a small trial credit for 7 days.
+   One registration per account and per itch.io profile; the profile must exist. Closes at the
+   submission deadline or when all spots are taken.
+2. **Submit** — after the game page is public on itch.io and the jam form is submitted: the same
+   row → itch.io game page → 交卷 (or `box_plan` `submit_megajam_entry`). Every team member
+   submits the same game page from their own UE Box. Resubmitting replaces the earlier link.
+
+After the jam the entries are checked against the jam's submission list. For each entry, what
+the account spent through UE Box during the jam, minus the trial credit, is added back to its
+Box Plan balance (capped per person). Only usage through UE Box's own Box Plan connection
+counts; keys created on the website do not. To get the most from it, the player can buy a Box
+Plan subscription or top up for the jam.
+
+- Error messages: wrong link format (profile `https://name.itch.io`, game page
+  `https://name.itch.io/game`), profile or game page not found on itch.io (a Draft page is not
+  found — make it public first), profile registered by another account, already registered,
+  all taken, closed.
+- When the credit runs out, top up or switch models in Settings → Models; nothing in the
+  project is lost.

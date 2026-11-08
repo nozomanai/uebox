@@ -52,6 +52,8 @@ export const creatorPlanAPI = {
   campaign: () => call<CreatorPlanCampaign>((api) => api.campaign()),
   claimCampaign: (itchUrl: string) =>
     call<{ expiresAt: string | null }>((api) => api.claimCampaign(itchUrl)),
+  submitCampaignEntry: (entryUrl: string) =>
+    call<{ entryUrl: string | null }>((api) => api.submitCampaignEntry(entryUrl)),
   /** 对话里套餐错误提示上的「管理订阅」：主进程用缓存的清单地址打开，不发请求 */
   openManage: async (): Promise<void> => {
     await bridge()?.openManage()

@@ -1,7 +1,7 @@
 /** @vitest-environment node */
 import { describe, expect, it, vi } from 'vitest'
 
-import { claimCampaign, fetchCampaign } from './campaign'
+import { claimCampaign, fetchCampaign, submitCampaignEntry } from './campaign'
 
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -12,9 +12,12 @@ describe('Box Plan 活动', () => {
       json(200, {
         open: true,
         claimed: true,
-        plan_title: 'MegaJam 激励套餐',
+        plan_title: 'MegaJam 参赛试用',
         claim_until: null,
-        expires_at: '2026-11-19T05:00:00Z'
+        expires_at: '2026-11-19T05:00:00Z',
+        submit_open: true,
+        submit_until: '2026-11-17T15:59:59Z',
+        entry_url: 'https://neon.itch.io/star-fort'
       })
     )
     const result = await fetchCampaign('https://token.example/v1', 'sk-k', fetchImpl)
@@ -27,9 +30,12 @@ describe('Box Plan 活动', () => {
       data: {
         open: true,
         claimed: true,
-        planTitle: 'MegaJam 激励套餐',
+        planTitle: 'MegaJam 参赛试用',
         claimUntil: null,
-        expiresAt: '2026-11-19T05:00:00Z'
+        expiresAt: '2026-11-19T05:00:00Z',
+        submitOpen: true,
+        submitUntil: '2026-11-17T15:59:59Z',
+        entryUrl: 'https://neon.itch.io/star-fort'
       }
     })
   })
@@ -42,7 +48,16 @@ describe('Box Plan 活动', () => {
     )
     expect(result).toEqual({
       ok: true,
-      data: { open: false, claimed: false, planTitle: null, claimUntil: null, expiresAt: null }
+      data: {
+        open: false,
+        claimed: false,
+        planTitle: null,
+        claimUntil: null,
+        expiresAt: null,
+        submitOpen: false,
+        submitUntil: null,
+        entryUrl: null
+      }
     })
   })
 
@@ -81,5 +96,29 @@ describe('Box Plan 活动', () => {
       })
     )
     expect(offline).toMatchObject({ ok: false, code: 'network' })
+  })
+
+  it('交卷：提交去掉首尾空白的作品页，回服务端规范化的地址；作品页错误码原样回', async () => {
+    const fetchImpl = vi.fn(async () =>
+      json(200, { entry_url: 'https://neon.itch.io/star-fort' })
+    )
+    const result = await submitCampaignEntry(
+      'https://t/v1',
+      'k',
+      ' https://Neon.itch.io/Star-Fort ',
+      fetchImpl
+    )
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://t/v1/campaigns/megajam/submit')
+    expect(JSON.parse(String(init.body))).toEqual({ entry_url: 'https://Neon.itch.io/Star-Fort' })
+    expect(result).toEqual({ ok: true, data: { entryUrl: 'https://neon.itch.io/star-fort' } })
+
+    const failed = await submitCampaignEntry(
+      'https://t/v1',
+      'k',
+      'neon.itch.io/draft',
+      vi.fn(async () => json(422, { error: { code: 'entry_not_found' } }))
+    )
+    expect(failed).toMatchObject({ ok: false, code: 'entry_not_found' })
   })
 })

@@ -875,18 +875,27 @@ export default {
         not_connected: '尚未连接',
         encryption_unavailable: '无法安全保存 Key',
         invalid_itch_url: '请填写 itch.io 个人主页地址，例如 https://yourname.itch.io',
-        already_claimed: '本账户已领取过',
+        itch_not_found: 'itch.io 上没有这个主页',
+        itch_taken: '这个 itch.io 主页已被其他账户登记',
+        already_claimed: '本账户已登记过',
         sold_out: '名额已发完',
-        campaign_closed: '领取已结束',
+        campaign_closed: '已截止',
+        invalid_entry_url: '请填写 itch.io 作品页地址，例如 https://yourname.itch.io/game',
+        entry_not_found: 'itch.io 上没有这个作品页',
         unknown: '发生错误：{error}'
       },
       campaign: {
-        title: 'MegaJam 激励套餐',
+        title: 'MegaJam 参赛登记',
         itchLabel: 'itch.io 主页',
-        claim: '领取',
-        claimed: '已领取 MegaJam 激励套餐',
-        claimedShort: '已领取',
-        expires: '{date} 到期'
+        claim: '登记',
+        claimed: '已登记，试用额度已到账',
+        claimedShort: '已登记',
+        expires: '试用 {date} 到期',
+        entryLabel: 'itch.io 作品页',
+        submit: '交卷',
+        resubmit: '重新提交',
+        submitted: '已交卷',
+        entry: '已交卷：{url}'
       },
       chat: {
         subscription_inactive: {

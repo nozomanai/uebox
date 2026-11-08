@@ -11,7 +11,8 @@
  *   creator-plan:disconnect  在服务端吊销 Key → 删来源、还原绑定、删本机 Key
  *   creator-plan:open-manage 打开清单里的 manage_url（对话里的套餐错误提示用）
  *   creator-plan:campaign    活动状态（campaign.ts）；没连接时回 open:false，不发请求
- *   creator-plan:campaign-claim 领取活动套餐，成功后刷新清单
+ *   creator-plan:campaign-claim 参赛登记（送试用套餐），成功后刷新清单
+ *   creator-plan:campaign-submit 交卷（itch 作品页）
  *
  * 业务逻辑在 service.ts，agent 工具 box_plan 也走它。没连接时不发任何请求：
  * 连接只能由用户发起（点按钮，或让 agent 去连），浏览器里的登录和「允许」仍由用户自己点。
@@ -32,6 +33,7 @@ import {
   campaignStatus,
   cancelConnect,
   claimPlanCampaign,
+  submitPlanCampaignEntry,
   connectPlan,
   disconnectPlan,
   failResult,
@@ -97,6 +99,12 @@ export function registerCreatorPlanIPC(): void {
     'creator-plan:campaign-claim',
     (_event, itchUrl: string): Promise<CreatorPlanResult<{ expiresAt: string | null }>> =>
       claimPlanCampaign(itchUrl)
+  )
+
+  ipcMain.handle(
+    'creator-plan:campaign-submit',
+    (_event, entryUrl: string): Promise<CreatorPlanResult<{ entryUrl: string | null }>> =>
+      submitPlanCampaignEntry(entryUrl)
   )
 
   ipcMain.handle('creator-plan:open-manage', () => openPlanManage())

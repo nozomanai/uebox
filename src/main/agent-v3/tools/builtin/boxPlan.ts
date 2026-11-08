@@ -1,5 +1,5 @@
 /**
- * `box_plan` —— 在对话里替用户连接 Box Plan、领活动套餐、导入模型。
+ * `box_plan` —— 在对话里替用户连接 Box Plan、MegaJam 参赛登记和交卷、导入模型。
  *
  * 设置页能做的这几步，用户也可以直接让 agent 做（「帮我领 MegaJam 套餐并配好」）。
  * 走的是设置页同一套逻辑（`ai/creatorPlan/service.ts`），落盘规则不会两边不一致。
@@ -7,9 +7,10 @@
  * 唯一做不到的一步是账户授权：`connect` 打开浏览器，登录和「允许」由用户自己点，
  * 工具在这里等，用户点完才往下走。
  *
- * - `status`：连没连、套餐状态、MegaJam 活动开没开、领没领。只读
+ * - `status`：连没连、套餐状态、MegaJam 能不能登记、登记没有、交卷没有。只读
  * - `connect`：设备授权。已经连着就直接回状态
- * - `claim_megajam`：填 itch.io 主页领活动套餐，套餐开在连着的账户上
+ * - `claim_megajam`：参赛登记，填 itch.io 主页，试用套餐开在连着的账户上
+ * - `submit_megajam_entry`：交卷，填 itch 作品页。赛后按比赛期间盒子的用量返到账户余额
  * - `import`：把套餐的模型按导入预览的默认勾选接到各角色上（用户自己配过的角色不动），
  *   不动对象存储。导入后从下一轮对话起生效
  */
@@ -22,16 +23,24 @@ import { defineTool, type ToolRisk, type UnrealAgentTool } from '../defineTool'
 
 const input = z.object({
   action: z
-    .enum(['status', 'connect', 'claim_megajam', 'import'])
+    .enum(['status', 'connect', 'claim_megajam', 'submit_megajam_entry', 'import'])
     .describe(
-      'status=查看连接、套餐和 MegaJam 活动状态；connect=连接 Box Plan（打开浏览器，用户登录并允许）；' +
-        'claim_megajam=领 MegaJam 激励套餐；import=把套餐模型接到各角色（不动用户自己配过的角色）'
+      'status=查看连接、套餐和 MegaJam 登记、交卷状态；connect=连接 Box Plan（打开浏览器，用户登录并允许）；' +
+        'claim_megajam=MegaJam 参赛登记（送试用额度）；submit_megajam_entry=MegaJam 交卷；' +
+        'import=把套餐模型接到各角色（不动用户自己配过的角色）'
     ),
   itch_url: z
     .string()
     .optional()
     .describe(
       'claim_megajam 必填：用户的 itch.io 个人主页，如 https://name.itch.io。先问用户，不要猜'
+    ),
+  entry_url: z
+    .string()
+    .optional()
+    .describe(
+      'submit_megajam_entry 必填：itch.io 上的作品页，如 https://name.itch.io/game。' +
+        '作品页要已经公开；先问用户或从对话里已确认的地址取，不要猜'
     )
 })
 
@@ -42,6 +51,7 @@ export interface BoxPlanResult {
   connected: boolean
   claimed?: boolean
   expiresAt?: string | null
+  entryUrl?: string | null
   importedRoles?: ModelRole[]
 }
 
@@ -68,9 +78,13 @@ export function describePlanState(state: CreatorPlanState): string {
 
 const CLAIM_ERRORS: Record<string, string> = {
   invalid_itch_url: 'itch.io 主页格式不对，要个人主页地址，如 https://name.itch.io',
-  already_claimed: '这个账户已经领过 MegaJam 激励套餐',
-  sold_out: 'MegaJam 激励套餐已经发完',
-  campaign_closed: 'MegaJam 领取已结束或没有开放',
+  itch_not_found: 'itch.io 上没有这个主页，和用户核对地址',
+  itch_taken: '这个 itch.io 主页已被别的账户登记过，和用户核对是不是填错了',
+  already_claimed: '这个账户已经登记过 MegaJam',
+  sold_out: 'MegaJam 登记名额已满',
+  campaign_closed: 'MegaJam 已截止或没有开放',
+  invalid_entry_url: '作品页格式不对，要 itch.io 上的作品地址，如 https://name.itch.io/game',
+  entry_not_found: 'itch.io 上打不开这个作品页：确认地址，并确认作品页已经公开（不是 Draft）',
   unauthorized: 'Box Plan 授权已失效，先 connect',
   not_connected: 'Box Plan 还没连接，先 connect',
   network: '连不上 Box Plan 服务'
@@ -85,10 +99,11 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
     riskFor: (args): ToolRisk => ((args as Input).action === 'status' ? 'safe' : 'mutating'),
     concurrency: 'sequential',
     description:
-      '替用户连接 Box Plan（盒子的模型订阅）、领 2026 Epic AI MegaJam 激励套餐、把套餐模型导入到各角色。' +
-      '用户说「帮我领套餐」「帮我配好 Box Plan」时用，按 status → connect → claim_megajam → import 的顺序走，' +
+      '替用户连接 Box Plan（盒子的模型订阅）、做 2026 Epic AI MegaJam 参赛登记和交卷、把套餐模型导入到各角色。' +
+      '用户说「帮我登记 MegaJam」「帮我配好 Box Plan」时用，按 status → connect → claim_megajam → import 的顺序走，' +
       '已经做过的步骤跳过。connect 会打开浏览器，登录和「允许」只能由用户自己点：调用前告诉用户。' +
-      'claim_megajam 要用户的 itch.io 个人主页，先问用户。import 不动用户自己配过的角色，从下一轮对话起生效。',
+      'claim_megajam 要用户的 itch.io 个人主页，先问用户。import 不动用户自己配过的角色，从下一轮对话起生效。' +
+      '作品在 itch 上公开、jam 表单交完后，用 submit_megajam_entry 交卷：赛后按比赛期间盒子的用量返到账户余额。',
     input,
     execute: async (args, ctx) => {
       const service = await import('../../../ai/creatorPlan/service')
@@ -110,11 +125,15 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
             expiresAt = campaign.data.expiresAt
             lines.push(
               campaign.data.claimed
-                ? `MegaJam 激励套餐已领取${campaign.data.expiresAt ? `，${campaign.data.expiresAt} 到期` : ''}。`
+                ? `MegaJam 已登记${campaign.data.expiresAt ? `，试用额度 ${campaign.data.expiresAt} 到期` : ''}。`
                 : campaign.data.open
-                  ? 'MegaJam 激励套餐可以领取（claim_megajam）。'
-                  : 'MegaJam 激励套餐当前不能领取。'
+                  ? 'MegaJam 可以参赛登记（claim_megajam）。'
+                  : 'MegaJam 当前不能登记。'
             )
+            if (campaign.data.entryUrl)
+              lines.push(`MegaJam 已交卷：${campaign.data.entryUrl}。`)
+            else if (campaign.data.submitOpen)
+              lines.push('MegaJam 还没交卷（作品在 itch 公开后 submit_megajam_entry）。')
           }
         }
         return {
@@ -164,16 +183,30 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
       if (args.action === 'claim_megajam') {
         if (!args.itch_url?.trim()) throw new Error('缺 itch_url：先问用户的 itch.io 个人主页')
         const result = await service.claimPlanCampaign(args.itch_url)
-        if (!result.ok) throw new Error(CLAIM_ERRORS[result.code] ?? `领取失败：${result.error}`)
+        if (!result.ok) throw new Error(CLAIM_ERRORS[result.code] ?? `登记失败：${result.error}`)
         return {
           text:
-            `已领取 MegaJam 激励套餐${result.data.expiresAt ? `，${result.data.expiresAt} 到期` : ''}。` +
+            `MegaJam 已登记，试用额度已到账${result.data.expiresAt ? `，${result.data.expiresAt} 到期` : ''}。` +
             '模型还要 import 才会用上。',
           details: {
             action: 'claim_megajam',
             connected: true,
             claimed: true,
             expiresAt: result.data.expiresAt
+          }
+        }
+      }
+
+      if (args.action === 'submit_megajam_entry') {
+        if (!args.entry_url?.trim()) throw new Error('缺 entry_url：先问用户 itch 上的作品页地址')
+        const result = await service.submitPlanCampaignEntry(args.entry_url)
+        if (!result.ok) throw new Error(CLAIM_ERRORS[result.code] ?? `交卷失败：${result.error}`)
+        return {
+          text: `MegaJam 已交卷：${result.data.entryUrl ?? args.entry_url.trim()}。赛后核对 jam 提交列表，比赛期间盒子的用量返到账户余额。`,
+          details: {
+            action: 'submit_megajam_entry',
+            connected: true,
+            entryUrl: result.data.entryUrl
           }
         }
       }

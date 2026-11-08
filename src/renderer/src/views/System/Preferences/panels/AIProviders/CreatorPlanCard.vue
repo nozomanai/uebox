@@ -63,13 +63,18 @@ async function load(): Promise<void> {
 }
 
 /**
- * MegaJam 活动：连着 Box Plan 时问服务端开没开。开着、没领过才显示领取那一行；
- * 领过了显示到期时间。拿不到状态（老服务端、断网）就什么都不显示。
+ * MegaJam 活动：连着 Box Plan 时问服务端开没开。能登记、没登记过显示登记那一行，
+ * 登记过显示试用到期时间；能交卷时显示交卷那一行。拿不到状态（老服务端、断网）就什么都不显示。
  */
 const campaign = ref<CreatorPlanCampaign | null>(null)
 const itchUrl = ref('')
 const claiming = ref(false)
 const claimError = ref('')
+const entryUrl = ref('')
+const submitting = ref(false)
+/** 交过的作品页、能不能交卷。模板里事件处理之后 campaign 的非空收窄会丢，单独算出来 */
+const submittedEntry = computed(() => campaign.value?.entryUrl ?? null)
+const canSubmit = computed(() => campaign.value?.submitOpen === true)
 
 async function loadCampaign(): Promise<void> {
   if (!state.value?.connected) {
@@ -98,6 +103,24 @@ async function claimCampaign(): Promise<void> {
     await reimport()
   } finally {
     claiming.value = false
+  }
+}
+
+async function submitEntry(): Promise<void> {
+  if (submitting.value || !entryUrl.value.trim()) return
+  submitting.value = true
+  claimError.value = ''
+  try {
+    const result = await creatorPlanAPI.submitCampaignEntry(entryUrl.value)
+    if (!result.ok) {
+      claimError.value = errorText(result.code, result.error)
+      return
+    }
+    message.success(t('aiProvider.creatorPlan.campaign.submitted'))
+    entryUrl.value = ''
+    await loadCampaign()
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -363,13 +386,13 @@ onUnmounted(() => unsubscribe?.())
       </AppButton>
     </div>
 
-    <!-- MegaJam 活动：开着且没领过时可领；领过了显示到期时间 -->
+    <!-- MegaJam 活动：能登记、没登记过时可登记，登记过显示试用到期时间；能交卷时可交卷 -->
     <div
-      v-if="state?.connected && campaign && (campaign.claimed || campaign.open)"
+      v-if="state?.connected && campaign && (campaign.claimed || campaign.open || campaign.submitOpen)"
       class="plan-campaign"
     >
       <span class="plan-desc">
-        {{ campaign.planTitle || $t('aiProvider.creatorPlan.campaign.title') }}
+        {{ $t('aiProvider.creatorPlan.campaign.title') }}
         <template v-if="campaign.claimed">
           ·
           {{
@@ -381,7 +404,11 @@ onUnmounted(() => unsubscribe?.())
           }}
         </template>
       </span>
-      <form v-if="!campaign.claimed" class="plan-campaign-form" @submit.prevent="claimCampaign">
+      <form
+        v-if="!campaign.claimed && campaign.open"
+        class="plan-campaign-form"
+        @submit.prevent="claimCampaign"
+      >
         <a-input
           v-model:value="itchUrl"
           class="plan-campaign-input"
@@ -396,6 +423,30 @@ onUnmounted(() => unsubscribe?.())
           @click="claimCampaign"
         >
           {{ $t('aiProvider.creatorPlan.campaign.claim') }}
+        </AppButton>
+      </form>
+      <span v-if="submittedEntry" class="plan-desc">
+        {{ $t('aiProvider.creatorPlan.campaign.entry', { url: submittedEntry }) }}
+      </span>
+      <form v-if="canSubmit" class="plan-campaign-form" @submit.prevent="submitEntry">
+        <a-input
+          v-model:value="entryUrl"
+          class="plan-campaign-input"
+          :aria-label="$t('aiProvider.creatorPlan.campaign.entryLabel')"
+          placeholder="https://yourname.itch.io/game"
+          :disabled="submitting"
+        />
+        <AppButton
+          :variant="submittedEntry ? 'default' : 'primary'"
+          size="small"
+          :disabled="submitting || !entryUrl.trim()"
+          @click="submitEntry"
+        >
+          {{
+            submittedEntry
+              ? $t('aiProvider.creatorPlan.campaign.resubmit')
+              : $t('aiProvider.creatorPlan.campaign.submit')
+          }}
         </AppButton>
       </form>
       <span v-if="claimError" class="plan-desc plan-warn" role="alert">{{ claimError }}</span>

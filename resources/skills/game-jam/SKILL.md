@@ -46,13 +46,15 @@ Follow `references/kickoff.md`. In short:
 1. **Interview** — five questions in one message: UE experience, team and roles, hours per day
    during the jam, strengths (code, art, design, audio), the PC and UE version.
 2. **Readiness** — eligibility (18+, own Epic account, everything English) and UE Box 1.0.12+.
-3. **Model** — the player's own provider, or the MegaJam plan on Box Plan (7 days, covers the
-   jam). Offer to set it up: `box_plan` with `status` first, then only the missing steps —
-   `connect` (tell the player a browser page opens and they must log in and press Allow
-   themselves), `claim_megajam` (ask for their itch.io profile URL first, never guess it),
-   `import` (wires the plan's models into the roles the player has not configured; takes effect
-   from the next message). The player can also do it by hand: Settings → Models → Box Plan →
-   Connect, then the "MegaJam 激励套餐" row → itch.io profile → Claim.
+3. **Model** — the player's own provider, or Box Plan. On Box Plan, MegaJam registration adds
+   a small trial credit, and what the player spends through UE Box during the jam is refunded
+   to their balance once they submit (rules in `references/epic-ai-megajam-2026.md`). Offer to
+   set it up: `box_plan` with `status` first, then only the missing steps — `connect` (tell
+   the player a browser page opens and they must log in and press Allow themselves),
+   `claim_megajam` (ask for their itch.io profile URL first, never guess it), `import` (wires
+   the plan's models into the roles the player has not configured; takes effect from the next
+   message). The player can also do it by hand: Settings → Models → Box Plan → Connect, then
+   the "MegaJam 参赛登记" row → itch.io profile → 登记.
 4. **Personal plan** — from the answers, propose a jam style (table in `kickoff.md`), a scope
    tier and a daily timetable. Write them to `DevLog.md`.
 5. **Setup** — a new jam project from an engine template (`project_manage` with
