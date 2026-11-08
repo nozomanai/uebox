@@ -2259,6 +2259,16 @@ declare global {
         >
       >
       openManage: () => Promise<void>
+      /** 活动状态（MegaJam）。没连接时不联网 */
+      campaign: () => Promise<
+        import('../shared/creatorPlan').CreatorPlanResult<
+          import('../shared/creatorPlan').CreatorPlanCampaign
+        >
+      >
+      /** 领取活动套餐，填 itch.io 主页 */
+      claimCampaign: (
+        itchUrl: string
+      ) => Promise<import('../shared/creatorPlan').CreatorPlanResult<{ expiresAt: string | null }>>
       onDeviceCode: (
         callback: (prompt: import('../shared/creatorPlan').CreatorPlanDevicePrompt) => void
       ) => () => void

@@ -895,7 +895,19 @@ First work out why the install failed from the output above. If you can run comm
         bad_response: 'The Box Plan service sent an unexpected response',
         not_connected: 'Not connected yet',
         encryption_unavailable: "Can't store the key securely",
+        invalid_itch_url: 'Enter your itch.io profile URL, for example https://yourname.itch.io',
+        already_claimed: 'This account has already claimed it',
+        sold_out: 'All plans have been claimed',
+        campaign_closed: 'Claiming has ended',
         unknown: 'Something went wrong: {error}'
+      },
+      campaign: {
+        title: 'MegaJam plan',
+        itchLabel: 'itch.io profile',
+        claim: 'Claim',
+        claimed: 'MegaJam plan claimed',
+        claimedShort: 'Claimed',
+        expires: 'Expires {date}'
       },
       chat: {
         subscription_inactive: {

@@ -376,7 +376,22 @@ export type CreatorPlanErrorCode =
   | 'bad_response'
   | 'not_connected'
   | 'encryption_unavailable'
+  | 'invalid_itch_url'
+  | 'already_claimed'
+  | 'sold_out'
+  | 'campaign_closed'
   | 'unknown'
+
+/** Box Plan 的活动（2026 Epic AI MegaJam）。开没开、发什么都由服务端决定 */
+export interface CreatorPlanCampaign {
+  open: boolean
+  /** 这个账户领过了（之前买过同一套餐也算） */
+  claimed: boolean
+  planTitle: string | null
+  claimUntil: string | null
+  /** 领到的那份套餐的到期时间 */
+  expiresAt: string | null
+}
 
 export type CreatorPlanResult<T> =
   | { ok: true; data: T }

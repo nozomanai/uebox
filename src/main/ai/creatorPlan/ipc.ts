@@ -10,6 +10,8 @@
  *                            勾了「对象存储」就换成套餐的存储（storage.ts）
  *   creator-plan:disconnect  在服务端吊销 Key → 删来源、还原绑定、删本机 Key
  *   creator-plan:open-manage 打开清单里的 manage_url（对话里的套餐错误提示用）
+ *   creator-plan:campaign    活动状态（campaign.ts）；没连接时回 open:false，不发请求
+ *   creator-plan:campaign-claim 领取活动套餐，成功后刷新清单
  *
  * 没连接时，这里没有任何代码会发请求：连接这件事只能由用户点按钮发起。
  */
@@ -19,6 +21,7 @@ import { app, ipcMain, shell } from 'electron'
 import type { ModelRole } from '../../../shared/aiProvider'
 import type {
   CreatorPlanApplyOptions,
+  CreatorPlanCampaign,
   CreatorPlanDisconnectResult,
   CreatorPlanManifest,
   CreatorPlanPreview,
@@ -49,6 +52,7 @@ import { readOrCreateDeviceId } from './deviceId'
 import { CREATOR_PLAN_KEYS_URL, CREATOR_PLAN_ORIGIN } from './endpoint'
 import { clearPlanState, readPlanState, updatePlanState, writePlanState } from './planState'
 import { planConnection, refreshPlan } from './refresh'
+import { claimCampaign, fetchCampaign } from './campaign'
 import { applyPlanStorage, planStoragePreview, restorePlanStorage } from './storage'
 
 /** 正在进行的设备授权，用来取消 */
@@ -238,6 +242,33 @@ export function registerCreatorPlanIPC(): void {
    * 对话里套餐错误提示上的「管理订阅」。地址取缓存的清单，不为这一下发请求；
    * 没有缓存（从没拉成功过）就退到网页端首页。
    */
+  ipcMain.handle(
+    'creator-plan:campaign',
+    async (): Promise<CreatorPlanResult<CreatorPlanCampaign>> => {
+      const conn = await planConnection()
+      if (!conn?.apiKey) {
+        return {
+          ok: true,
+          data: { open: false, claimed: false, planTitle: null, claimUntil: null, expiresAt: null }
+        }
+      }
+      return fetchCampaign(conn.baseUrl, conn.apiKey)
+    }
+  )
+
+  ipcMain.handle(
+    'creator-plan:campaign-claim',
+    async (_event, itchUrl: string): Promise<CreatorPlanResult<{ expiresAt: string | null }>> => {
+      const conn = await planConnection()
+      if (!conn) return { ok: false, code: 'not_connected', error: 'Not connected' }
+      if (!conn.apiKey) return { ok: false, code: 'unauthorized', error: 'Key missing' }
+      const result = await claimCampaign(conn.baseUrl, conn.apiKey, String(itchUrl ?? ''))
+      // 套餐变了，清单（额度、到期时间）跟着刷新；刷新失败不影响领取结果
+      if (result.ok) await refreshPlan().catch(() => undefined)
+      return result
+    }
+  )
+
   ipcMain.handle('creator-plan:open-manage', async (): Promise<void> => {
     const { manifest } = await readPlanState()
     const url = manifest?.plan.manage_url

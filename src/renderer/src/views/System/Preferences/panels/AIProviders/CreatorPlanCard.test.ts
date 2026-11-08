@@ -424,3 +424,82 @@ describe('route price acceptance', () => {
     expect(api.apply).not.toHaveBeenCalled()
   })
 })
+
+describe('CreatorPlanCard · MegaJam 活动', () => {
+  const inputStub = {
+    'a-input': {
+      props: ['value'],
+      emits: ['update:value'],
+      template:
+        '<input class="itch-input" :value="value" @input="$emit(\'update:value\', $event.target.value)" />'
+    }
+  }
+  const campaignOpen = {
+    open: true,
+    claimed: false,
+    planTitle: 'MegaJam 激励套餐',
+    claimUntil: null,
+    expiresAt: null
+  }
+
+  it('活动开着、没领过：显示套餐名和领取；领取成功后显示到期时间并通知父组件', async () => {
+    const campaign = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, data: campaignOpen })
+      .mockResolvedValue({
+        ok: true,
+        data: { ...campaignOpen, claimed: true, expiresAt: '2026-11-19T05:00:00Z' }
+      })
+    const claimCampaign = vi.fn(async () => ({
+      ok: true,
+      data: { expiresAt: '2026-11-19T05:00:00Z' }
+    }))
+    stubApi({ state: vi.fn(async () => ({ ok: true, data: connected })), campaign, claimCampaign })
+    const wrapper = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
+    await flushPromises()
+
+    expect(wrapper.find('.plan-campaign').text()).toContain('MegaJam 激励套餐')
+    await wrapper.find('.itch-input').setValue('https://neon.itch.io')
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '领取')!
+      .trigger('click')
+    await flushPromises()
+
+    expect(claimCampaign).toHaveBeenCalledWith('https://neon.itch.io')
+    expect(wrapper.find('.plan-campaign').text()).toContain('到期')
+    expect(wrapper.find('.itch-input').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toBeTruthy()
+  })
+
+  it('领取失败：按错误码显示原因，输入框保留', async () => {
+    stubApi({
+      state: vi.fn(async () => ({ ok: true, data: connected })),
+      campaign: vi.fn(async () => ({ ok: true, data: campaignOpen })),
+      claimCampaign: vi.fn(async () => ({ ok: false, code: 'sold_out', error: 'HTTP 410' }))
+    })
+    const wrapper = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
+    await flushPromises()
+    await wrapper.find('.itch-input').setValue('neon.itch.io')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toBe('名额已发完')
+    expect(wrapper.find('.itch-input').exists()).toBe(true)
+  })
+
+  it('活动没开、没连接、服务端不支持：都不显示', async () => {
+    stubApi({
+      state: vi.fn(async () => ({ ok: true, data: connected })),
+      campaign: vi.fn(async () => ({ ok: true, data: { ...campaignOpen, open: false } }))
+    })
+    const closed = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
+    await flushPromises()
+    expect(closed.find('.plan-campaign').exists()).toBe(false)
+
+    const api = stubApi({ campaign: vi.fn(async () => ({ ok: true, data: campaignOpen })) })
+    const offline = mount(CreatorPlanCard, { global: { stubs: { ...stubs, ...inputStub } } })
+    await flushPromises()
+    expect(offline.find('.plan-campaign').exists()).toBe(false)
+    expect(api.campaign).not.toHaveBeenCalled()
+  })
+})

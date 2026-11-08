@@ -874,7 +874,19 @@ export default {
         bad_response: 'Box Plan 服务返回了无法识别的内容',
         not_connected: '尚未连接',
         encryption_unavailable: '无法安全保存 Key',
+        invalid_itch_url: '请填写 itch.io 个人主页地址，例如 https://yourname.itch.io',
+        already_claimed: '本账户已领取过',
+        sold_out: '名额已发完',
+        campaign_closed: '领取已结束',
         unknown: '发生错误：{error}'
+      },
+      campaign: {
+        title: 'MegaJam 激励套餐',
+        itchLabel: 'itch.io 主页',
+        claim: '领取',
+        claimed: '已领取 MegaJam 激励套餐',
+        claimedShort: '已领取',
+        expires: '{date} 到期'
       },
       chat: {
         subscription_inactive: {
