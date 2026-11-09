@@ -130,8 +130,7 @@ export function createBoxPlanTool(): UnrealAgentTool<BoxPlanResult> {
                   ? 'MegaJam 可以参赛登记（claim_megajam）。'
                   : 'MegaJam 当前不能登记。'
             )
-            if (campaign.data.entryUrl)
-              lines.push(`MegaJam 已交卷：${campaign.data.entryUrl}。`)
+            if (campaign.data.entryUrl) lines.push(`MegaJam 已交卷：${campaign.data.entryUrl}。`)
             else if (campaign.data.submitOpen)
               lines.push('MegaJam 还没交卷（作品在 itch 公开后 submit_megajam_entry）。')
           }

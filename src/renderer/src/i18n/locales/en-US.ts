@@ -901,7 +901,8 @@ First work out why the install failed from the output above. If you can run comm
         already_claimed: 'This account is already registered',
         sold_out: 'All spots are taken',
         campaign_closed: 'Closed',
-        invalid_entry_url: 'Enter your itch.io game page, for example https://yourname.itch.io/game',
+        invalid_entry_url:
+          'Enter your itch.io game page, for example https://yourname.itch.io/game',
         entry_not_found: 'No such itch.io game page',
         unknown: 'Something went wrong: {error}'
       },

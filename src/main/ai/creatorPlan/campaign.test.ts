@@ -99,9 +99,7 @@ describe('Box Plan 活动', () => {
   })
 
   it('交卷：提交去掉首尾空白的作品页，回服务端规范化的地址；作品页错误码原样回', async () => {
-    const fetchImpl = vi.fn(async () =>
-      json(200, { entry_url: 'https://neon.itch.io/star-fort' })
-    )
+    const fetchImpl = vi.fn(async () => json(200, { entry_url: 'https://neon.itch.io/star-fort' }))
     const result = await submitCampaignEntry(
       'https://t/v1',
       'k',

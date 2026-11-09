@@ -172,9 +172,7 @@ describe('真实工具库检索回归', () => {
     expect(search.getTools()).toEqual(expect.arrayContaining(members))
     const details = result.details as { toolSearch?: { loadedToolNames?: string[] } }
     expect(details.toolSearch?.loadedToolNames).toEqual(
-      expect.arrayContaining(
-        members.map((tool) => tool.name)
-      )
+      expect.arrayContaining(members.map((tool) => tool.name))
     )
     if (process.env.TOOL_SEARCH_MEASURE === '1')
       console.info('TOOL_SEARCH_SKILL', name, JSON.stringify(result.details))

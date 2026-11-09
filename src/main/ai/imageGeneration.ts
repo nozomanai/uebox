@@ -530,7 +530,12 @@ const PLAN_TIER_EDGE: Record<string, number> = { '1K': 1024, '2K': 2048, '4K': 4
 function planImageSize(size?: string, ratio?: string): `${number}x${number}` | undefined {
   const explicit = asSize(size)
   if (explicit) return explicit
-  const edge = PLAN_TIER_EDGE[String(size || '').trim().toUpperCase()]
+  const edge =
+    PLAN_TIER_EDGE[
+      String(size || '')
+        .trim()
+        .toUpperCase()
+    ]
   if (!edge) return undefined
   const [rw, rh] = sidesOfRatio(ratio)
   const target = Math.min(Math.max(edge * edge, PLAN_MIN_PIXELS), PLAN_MAX_PIXELS)

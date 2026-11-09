@@ -1043,14 +1043,15 @@ describe('清单 models：模型列表由服务端定', () => {
         ...withClaude,
         models: [...modelsManifest.models!, { ...claude, protocol: undefined }]
       }
-      const old = choose(normalizeSettings(applyPlan(base, unmarked, keyRef, ['chat', 'summary'])), {
-        chat: { providerId: PLAN_PROVIDER_ID, modelId: claude.model }
-      })
+      const old = choose(
+        normalizeSettings(applyPlan(base, unmarked, keyRef, ['chat', 'summary'])),
+        {
+          chat: { providerId: PLAN_PROVIDER_ID, modelId: claude.model }
+        }
+      )
       expect(plan(old).models.map((m) => m.id)).toContain(claude.model)
 
-      const next = normalizeSettings(
-        syncPlanModels(refreshPlanModels(old, withClaude), withClaude)
-      )
+      const next = normalizeSettings(syncPlanModels(refreshPlanModels(old, withClaude), withClaude))
       expect(next.roles.chat).toEqual(claudeBinding)
       expect(next.roles.summary).toEqual(old.roles.summary)
       expect(plan(next).models.map((m) => m.id)).toEqual(['uebox-chat', 'uebox-chat-beta'])

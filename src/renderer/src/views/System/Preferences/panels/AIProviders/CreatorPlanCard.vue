@@ -388,7 +388,9 @@ onUnmounted(() => unsubscribe?.())
 
     <!-- MegaJam 活动：能登记、没登记过时可登记，登记过显示试用到期时间；能交卷时可交卷 -->
     <div
-      v-if="state?.connected && campaign && (campaign.claimed || campaign.open || campaign.submitOpen)"
+      v-if="
+        state?.connected && campaign && (campaign.claimed || campaign.open || campaign.submitOpen)
+      "
       class="plan-campaign"
     >
       <span class="plan-desc">
