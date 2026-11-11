@@ -139,9 +139,7 @@ describe('打包版压 zip', () => {
   it('给的是 Binaries/Win64 下的真 exe 时，往上找到整个包的那一层', () => {
     const root = join('D:', 'b', 'Windows')
     expect(packageRootOf(join(root, 'TD.exe'))).toBe(root)
-    expect(packageRootOf(join(root, 'TD', 'Binaries', 'Win64', 'TD-Win64-Shipping.exe'))).toBe(
-      root
-    )
+    expect(packageRootOf(join(root, 'TD', 'Binaries', 'Win64', 'TD-Win64-Shipping.exe'))).toBe(root)
   })
 
   it('zip 不能放进要压缩的目录里', () => {

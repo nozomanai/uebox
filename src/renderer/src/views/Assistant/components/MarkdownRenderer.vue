@@ -58,11 +58,7 @@ import { copyImageToClipboard, downloadImage } from '@renderer/utils/imageBlob'
 import { useGlobalAudioStore } from '@renderer/store/modules/globalAudio'
 import { openImageViewer } from '@renderer/services/imageViewer'
 import { buildImageHtml, buildVideoHtml, createMediaPreviewRule } from './markdownMediaPreview'
-import {
-  buildPathLinkHtml,
-  createPathLinkRule,
-  installLocalLinkSupport
-} from './markdownPathLinks'
+import { buildPathLinkHtml, createPathLinkRule, installLocalLinkSupport } from './markdownPathLinks'
 import ContextMenu from '@renderer/components/ContextMenu/ContextMenu.vue'
 import { openFilePath, useFilePathMenu } from '@renderer/composables/useFilePathMenu'
 import { createLatestValueScheduler } from './latestValueScheduler'

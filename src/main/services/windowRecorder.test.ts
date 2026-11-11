@@ -21,9 +21,7 @@ describe('录制脚本的返回值', () => {
 
   it('帧数报不出来时不拦，只按字节判断', () => {
     expect(parseRecording({ dataUrl: dataUrl([1]), frames: null }).frames).toBeNull()
-    expect(() => parseRecording({ dataUrl: dataUrl([]), frames: null })).toThrow(
-      /一帧画面都没录到/
-    )
+    expect(() => parseRecording({ dataUrl: dataUrl([]), frames: null })).toThrow(/一帧画面都没录到/)
   })
 
   it('脚本没回东西', () => {
