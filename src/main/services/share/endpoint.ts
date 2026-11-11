@@ -11,6 +11,15 @@
 
 export const SHARE_ORIGIN = (process.env.UEBOX_SHARE_URL || 'https://uebox.ai').replace(/\/+$/, '')
 
+/**
+ * 分享用账户的设备授权和账户名（/v1/connect/*、/v1/plan）。账户归 uebox.ai，服务在 plan.uebox.ai；
+ * 模型连接已经换到中转站（creatorPlan/endpoint.ts），两边的 Key 不通用。
+ * 开发联调时用 UEBOX_SHARE_ACCOUNT_URL 指到本机服务。
+ */
+export const SHARE_ACCOUNT_ORIGIN = (
+  process.env.UEBOX_SHARE_ACCOUNT_URL || 'https://plan.uebox.ai'
+).replace(/\/+$/, '')
+
 /** 用户口头或网页上给的技能地址长这样：uebox.ai/s/<id> */
 export const SHARE_HOST = 'uebox.ai'
 

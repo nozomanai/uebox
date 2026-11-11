@@ -1,5 +1,5 @@
 /**
- * Box Plan 的服务地址 —— 全仓唯一写着官方域名的地方。
+ * Box Plan 的服务地址（中转站 token.uebox.ai） —— 全仓唯一写着官方域名的地方。
  *
  * 官方端点门禁（`scripts/check-official-endpoints.mjs`）把这个文件归在
  * 「用户主动开通的官方付费服务」一类：地址写在这里，但只有用户在设置里点「连接」之后
@@ -10,8 +10,8 @@
  */
 
 export const CREATOR_PLAN_ORIGIN = (
-  process.env.UEBOX_CREATOR_PLAN_URL || 'https://plan.uebox.ai'
+  process.env.UEBOX_CREATOR_PLAN_URL || 'https://token.uebox.ai'
 ).replace(/\/+$/, '')
 
 /** 网页端的 API Key 列表。断开时服务端没吊销成功，引导用户来这里手动吊销 */
-export const CREATOR_PLAN_KEYS_URL = `${CREATOR_PLAN_ORIGIN}/account/keys`
+export const CREATOR_PLAN_KEYS_URL = `${CREATOR_PLAN_ORIGIN}/keys`
