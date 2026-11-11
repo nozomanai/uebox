@@ -17,9 +17,13 @@
 - The plugin is missing or outdated: `project_update_plugin` installs or updates it (the editor
   restarts).
 - A proxy or VPN (Clash and similar) is running with system proxy or TUN mode: the editor's
-  local connection to UE Box can be routed through the proxy and fail. Ask the player to add
-  `127.0.0.1` and `localhost` to the proxy's bypass list, or switch the proxy to rule mode, then
-  restart the editor.
+  local connection to UE Box can be routed through the proxy and fail (the project log shows
+  `LogUALNetwork: Error: Connection error` followed by a proxy hint). Unreal ignores the proxy's
+  bypass list, so restart the editor without a proxy: have the player close the editor, find
+  the engine with `list_engines`, then start it with `run_shell_command`:
+  `"<engine>/Engine/Binaries/Win64/UnrealEditor.exe" "<project>.uproject" -ini:Engine:[HTTP]:HttpProxyAddress=`
+  with `HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` unset. Tell the player that Fab and online
+  sign-in inside that editor also go direct until the next normal start.
 - Two editors open on the same project: close one.
 
 ## Packaging fails
