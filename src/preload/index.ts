@@ -1459,6 +1459,8 @@ const api = {
       thinkingLevel?: 'auto' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
       /** 「快速」：Codex 订阅走 priority 档，别的模型忽略 */
       fastMode?: boolean
+      /** Cursor Context 档：auto 不发，256k / 500k */
+      cursorContext?: 'auto' | '256k' | '500k'
       /** 技能沉淀档位。不传等于 ask（想沉淀时先问用户） */
       skillLearning?: 'off' | 'ask' | 'auto'
       /**

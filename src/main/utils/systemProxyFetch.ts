@@ -91,6 +91,30 @@ export function createProxyAwareFetch(deps: ProxyAwareFetchDeps): typeof fetch {
 let routeResolver: ((url: string) => Promise<string>) | undefined
 
 /**
+ * 系统代理要求这个地址走 HTTP 代理时，返回代理的 host 和端口。
+ *
+ * 给不能用 `fetch` 的传输用（Cursor 的 HTTP/2）。没装代理钩子、或判定为直连，
+ * 就回 undefined，调用方自己直连。
+ */
+export async function resolveHttpProxy(
+  url: string
+): Promise<{ host: string; port: number } | undefined> {
+  if (!routeResolver) return undefined
+  const pac = await routeResolver(url).catch(() => 'DIRECT')
+  return parsePacProxy(pac)
+}
+
+/** `PROXY host:port` 的第一跳。DIRECT、SOCKS、解析不了的都不猜 */
+export function parsePacProxy(pac: string): { host: string; port: number } | undefined {
+  const first = pac.split(';')[0]?.trim() ?? ''
+  const match = /^PROXY\s+(\[[^\]]+\]|[^:\s]+):(\d+)\s*$/i.exec(first)
+  if (!match) return undefined
+  const port = Number(match[2])
+  if (!Number.isInteger(port) || port < 1 || port > 65535) return undefined
+  return { host: match[1], port }
+}
+
+/**
  * 这个地址这会儿走直连还是系统代理。给诊断日志用，不影响请求本身。
  *
  * 连接被掐时这是第一个要分清的问题：走代理的请求由 Chromium 发，报错带 `net::`

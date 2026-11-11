@@ -3364,6 +3364,8 @@ declare global {
         thinkingLevel?: AgentV3ThinkingLevel
         /** 「快速」：Codex 订阅走 priority 档，别的模型忽略 */
         fastMode?: boolean
+        /** Cursor Context 档：auto 不发，256k / 500k */
+        cursorContext?: 'auto' | '256k' | '500k'
         /** 技能沉淀档位。不传等于 ask（想沉淀时先问用户） */
         skillLearning?: AgentV3SkillLearning
         /**
@@ -3642,8 +3644,10 @@ declare global {
         levels: AgentV3ThinkingLevel[]
         levelMap: Record<string, string | null>
         modelId: string
-        /** 这个模型能不能开「快速」（目前只有 ChatGPT 订阅） */
+        /** 这个模型能不能开「快速」（Codex / Cursor Composer·Grok） */
         fastMode: boolean
+        /** Cursor Grok 可选的 Context 档，如 256k / 500k */
+        contextTiers?: Array<'256k' | '500k'>
       } | null>
       /** 这条对话绑定的模型（执行记录里那份）。没绑过为 null */
       sessionModel: (args: {

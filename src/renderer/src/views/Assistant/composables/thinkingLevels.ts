@@ -37,6 +37,14 @@ export interface ModelThinkingSupport {
   modelId: string
   /** 这个模型能不能开「快速」。老主进程不回这个字段，按不能算 */
   fastMode?: boolean
+  /** Cursor Grok 可选 Context 档（256k / 500k） */
+  contextTiers?: Array<'256k' | '500k'>
+}
+
+export type AgentCursorContext = 'auto' | '256k' | '500k'
+
+export function formatContextTierLabel(tier: '256k' | '500k'): string {
+  return tier.replace('k', 'K')
 }
 
 export interface ThinkingOption {

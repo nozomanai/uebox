@@ -34,6 +34,7 @@ const LOGO_URL = (id) => `https://models.dev/logos/${id}.svg`
  */
 const LOGO_ALIAS = {
   chatgpt: 'openai',
+  cursor: 'cursor',
   'kimi-code': 'moonshotai',
   'xiaomi-token-plan': 'xiaomi',
   'alibaba-token-plan': 'alibaba',
@@ -239,6 +240,16 @@ export const CURATED = [
     // 叫 Codex 而不是「ChatGPT Plus / Pro」：走的就是 Codex 那个后端，
     // 而且卡片一行放不下后面那截，截断之后反而看不出是哪一家
     displayName: 'Codex',
+    supportsOAuth: true
+  },
+  // Cursor 订阅。登录与官方 CLI 相同，对话走 AgentService，不使用控制台 API Key。
+  // 协议在 src/main/ai/cursor/。models.dev 没有这一家，模型写在 MANUAL_ENTRIES。
+  {
+    id: 'cursor',
+    group: 'subscription',
+    baseUrl: 'https://agentn.global.api5.cursor.sh',
+    protocol: 'cursor-agent',
+    displayName: 'Cursor',
     supportsOAuth: true
   },
   {
@@ -926,7 +937,72 @@ const model3d = (id, name, api) => ({
  * 2. **上游暂缺的国内厂商**（百度、腾讯、字节、无问芯穹）—— 这几家在国内
  *    份额不小，先手写几个主力模型；等 models.dev 收录了就把这里删掉。
  */
+/** Grok：与 Cursor 客户端一致，Low / Medium / High / Extra High（xhigh → extra_high） */
+const CURSOR_EFFORT_GROK = {
+  off: null,
+  minimal: null,
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'extra_high',
+  max: null
+}
+
+/** Composer 等只开 Fast、不在线上调 Effort 的型号 */
+const CURSOR_EFFORT_NONE = {
+  off: null,
+  minimal: null,
+  low: null,
+  medium: null,
+  high: null,
+  xhigh: null,
+  max: null
+}
+
+/** Claude / GPT / Gemini 等在 Cursor 里仍保留完整思考阶梯 */
+const CURSOR_EFFORT_FULL = {
+  off: 'off',
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max'
+}
+
 const MANUAL_ENTRIES = {
+  /**
+   * Cursor 订阅。没有 /models。wire id 与 CLI `agent models` 对齐；
+   * 账号里没有的型号选了会被服务端拒绝，可以删掉或手填。
+   * 日期只为通过目录的年份筛选，界面不展示。
+   */
+  cursor: {
+    name: 'Cursor',
+    env: [],
+    doc: 'https://cursor.com/docs/cli/reference/authentication',
+    models: Object.fromEntries(
+      [
+        ['auto', 'Auto', '2026-11-01', true, CURSOR_EFFORT_FULL],
+        ['composer-2.5', 'Composer 2.5', '2026-10-20', false, CURSOR_EFFORT_NONE],
+        ['composer-2.5-fast', 'Composer 2.5 Fast', '2026-10-20', false, CURSOR_EFFORT_NONE],
+        ['claude-4.7-opus', 'Claude 4.7 Opus', '2026-10-01', true, CURSOR_EFFORT_FULL],
+        ['claude-4.6-sonnet', 'Claude 4.6 Sonnet', '2026-09-01', true, CURSOR_EFFORT_FULL],
+        ['gpt-5.5', 'GPT-5.5', '2026-08-15', true, CURSOR_EFFORT_FULL],
+        ['gpt-5.3-codex', 'GPT-5.3 Codex', '2026-08-01', true, CURSOR_EFFORT_FULL],
+        ['gemini-3.5-flash', 'Gemini 3.5 Flash', '2026-07-15', true, CURSOR_EFFORT_FULL],
+        ['gemini-3.1-pro', 'Gemini 3.1 Pro', '2026-07-01', true, CURSOR_EFFORT_FULL],
+        ['grok-4.7', 'Grok 4.7', '2026-10-28', true, CURSOR_EFFORT_GROK, 500_000],
+        ['grok-4.6', 'Grok 4.6', '2026-10-15', true, CURSOR_EFFORT_GROK, 500_000],
+        ['grok-4.3', 'Grok 4.3', '2026-06-15', true, CURSOR_EFFORT_GROK, 200_000]
+      ].map(([id, name, date, reasoning, thinking, context]) => [
+        id,
+        model(id, name, true, true, { context, output: 32_000 }, reasoning, {
+          release_date: date,
+          thinking
+        })
+      ])
+    )
+  },
   // Subscription model ID is case-sensitive (maskeb34/zcode, routes/gateway.py).
   // Limits verified against zcode.z.ai/api/v1/client/configs on 2026-10-13.
   // Other account models can be added manually.
@@ -2138,6 +2214,8 @@ function positiveInt(value) {
  * 还在声称它们有自己的标。内置浏览器和自建 SearXNG 本来就不是厂商，直接说没有。
  */
 const NO_LOGO = new Set([
+  // models.dev 对认不出的 id 回占位图。Cursor 没有独立条目，不收那张通用脸。
+  'cursor',
   'elevenlabs-music',
   'mureka-music',
   'sunoapi-music',

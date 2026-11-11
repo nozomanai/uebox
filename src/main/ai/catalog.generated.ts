@@ -6578,5 +6578,226 @@ export const GENERATED_CATALOG: readonly CatalogEntry[] = Object.freeze([
         "displayName": "网页搜索（/v1/tools/search）"
       }
     ]
+  },
+  {
+    "id": "cursor",
+    "displayName": "Cursor",
+    "group": "subscription",
+    "kind": "chat",
+    "protocol": "cursor-agent",
+    "baseUrl": "https://agentn.global.api5.cursor.sh",
+    "apiKeyUrl": "https://cursor.com/docs/cli/reference/authentication",
+    "requiresApiKey": true,
+    "hasLogo": false,
+    "supportsOAuth": true,
+    "models": [
+      {
+        "id": "auto",
+        "displayName": "Auto",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "grok-4.7",
+        "displayName": "Grok 4.7",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "extra_high",
+          "max": null
+        },
+        "contextWindow": 500000,
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "composer-2.5",
+        "displayName": "Composer 2.5",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": false,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": null,
+          "medium": null,
+          "high": null,
+          "xhigh": null,
+          "max": null
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "composer-2.5-fast",
+        "displayName": "Composer 2.5 Fast",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": false,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": null,
+          "medium": null,
+          "high": null,
+          "xhigh": null,
+          "max": null
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "grok-4.6",
+        "displayName": "Grok 4.6",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "extra_high",
+          "max": null
+        },
+        "contextWindow": 500000,
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "claude-4.7-opus",
+        "displayName": "Claude 4.7 Opus",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "claude-4.6-sonnet",
+        "displayName": "Claude 4.6 Sonnet",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "gpt-5.5",
+        "displayName": "GPT-5.5",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "gpt-5.3-codex",
+        "displayName": "GPT-5.3 Codex",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "gemini-3.5-flash",
+        "displayName": "Gemini 3.5 Flash",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "gemini-3.1-pro",
+        "displayName": "Gemini 3.1 Pro",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": "off",
+          "minimal": "minimal",
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "xhigh",
+          "max": "max"
+        },
+        "maxOutputTokens": 32000
+      },
+      {
+        "id": "grok-4.3",
+        "displayName": "Grok 4.3",
+        "supportsVision": true,
+        "supportsTools": true,
+        "supportsReasoning": true,
+        "thinkingLevelMap": {
+          "off": null,
+          "minimal": null,
+          "low": "low",
+          "medium": "medium",
+          "high": "high",
+          "xhigh": "extra_high",
+          "max": null
+        },
+        "contextWindow": 200000,
+        "maxOutputTokens": 32000
+      }
+    ]
   }
 ] as CatalogEntry[])

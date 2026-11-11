@@ -47,6 +47,7 @@ const VALID_PROTOCOLS: readonly ProviderProtocol[] = [
   'openai-completions',
   'openai-responses',
   'openai-codex-responses',
+  'cursor-agent',
   'anthropic-messages',
   'google-generative-ai'
 ]

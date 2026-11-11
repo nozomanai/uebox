@@ -32,6 +32,7 @@ const ALL_CODES = [
   'listUnsupportedGenerative',
   'listUnsupportedProtocol',
   'listUnsupportedCodex',
+  'listUnsupportedCursor',
   'listHttpError',
   'listEmpty',
   'noDraft'

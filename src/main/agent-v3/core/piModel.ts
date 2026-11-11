@@ -26,6 +26,7 @@ import { findCatalogEntry } from '../../ai/catalog'
 import { resolveModelLimits } from '../../ai/modelLimits'
 import { resolveRequestAuth } from '../../ai/credentials'
 import { readSettings } from '../../ai/store'
+import { cursorAgentApi } from '../../ai/cursor/stream'
 import { isOpenCodeEndpoint, openCodeHeaders } from '../../ai/opencode'
 import { isZCodeEndpoint, withZCodeTransport } from '../../ai/zcode'
 import type { ProviderConfig } from '../../ai/types'
@@ -42,6 +43,7 @@ const API_IMPL: Readonly<Record<ProviderProtocol, () => ProviderStreams>> = Obje
   // ChatGPT 订阅账号走 pi 自带的 codex 实现：账号 id 从令牌里解、强制流式、
   // 不落库，这些 openai-responses 那一档都不做（见 shared/aiProvider.ts）。
   'openai-codex-responses': openAICodexResponsesApi,
+  'cursor-agent': cursorAgentApi,
   'anthropic-messages': anthropicMessagesApi,
   'google-generative-ai': googleGenerativeAIApi
 })

@@ -14,6 +14,7 @@ import {
   type ThinkingLevel
 } from '@earendil-works/pi-ai'
 
+import { cursorModelContextTiers, cursorModelSupportsFast } from '../../ai/cursor/modelOptions'
 import { isOpenCodeEndpoint, openCodeHeaders } from '../../ai/opencode'
 import { isFreeOnFailureModel } from '../../ai/creatorPlan/apply'
 import { readSettings } from '../../ai/store'
@@ -82,13 +83,15 @@ function toPiReasoning(choice: ThinkingLevelChoice | undefined): ThinkingLevel |
 }
 
 /**
- * 模型菜单里的「快速」开关：请求里带 `service_tier: "priority"`，Codex CLI 的快速模式就是这个。
+ * 模型菜单里的「快速」开关。
  *
- * 只有 ChatGPT 订阅（Codex 后端）给这个开关：额度按倍数扣（pi 记的是 2 倍，gpt-5.5 是 2.5 倍），
- * 别家端点不认这个字段，开了也没用。pi 的 `streamSimple` 不转 `serviceTier`，所以在 onPayload 里补。
+ * - Codex 订阅：请求里带 `service_tier: "priority"`（pi 不转 serviceTier，在 onPayload 里补）。
+ * - Cursor 订阅：Composer / Grok 走 requested_model 的 `fast=true`（见 `cursor/modelOptions.ts`）。
  */
-export function supportsFastMode(model: { api: string }): boolean {
-  return model.api === 'openai-codex-responses'
+export function supportsFastMode(model: { api: string; id?: string }): boolean {
+  if (model.api === 'openai-codex-responses') return true
+  if (model.api === 'cursor-agent') return cursorModelSupportsFast(model.id ?? '')
+  return false
 }
 
 export interface PiModelSelection {
@@ -411,6 +414,8 @@ export interface ThinkingLevelOptions {
   modelId: string
   /** 这个模型能不能开「快速」，见 `supportsFastMode` */
   fastMode: boolean
+  /** Cursor 订阅可选的 Context 档（如 256k / 500k），没有就不显示 */
+  contextTiers?: string[]
 }
 
 /**
@@ -432,11 +437,17 @@ export async function listThinkingLevels(
   const selection = selectModel(settings, models, resolveRoleForRequest(settings, request))
   if (!selection) return null
 
+  const contextTiers =
+    selection.model.api === 'cursor-agent'
+      ? cursorModelContextTiers(selection.modelId)
+      : undefined
+
   return {
     levels: getSupportedThinkingLevels(selection.model),
     levelMap: (selection.model.thinkingLevelMap ?? {}) as Record<string, string | null>,
     modelId: selection.modelId,
-    fastMode: supportsFastMode(selection.model)
+    fastMode: supportsFastMode(selection.model),
+    ...(contextTiers ? { contextTiers: [...contextTiers] } : {})
   }
 }
 
@@ -450,7 +461,8 @@ function withPin(stored: AiProviderSettings, request: ModelRequest): AiProviderS
 export async function resolveAgentModel(
   request: ModelRequest = {},
   thinkingLevel?: ThinkingLevelChoice,
-  fastMode = false
+  fastMode = false,
+  cursorContext?: string
 ): Promise<AgentModelRuntime> {
   const settings = withPin(await readSettings(), request)
   const models = getModels(settings)
@@ -534,8 +546,14 @@ export async function resolveAgentModel(
     const labeled = labelToolResultImages(replaced.messages)
     const outgoing = labeled === replaced.messages ? replaced : { ...replaced, messages: labeled }
     const hasMedia = contextHasMediaRefs(outgoing)
-    const priority = fastMode && supportsFastMode(model)
-    const previousOnPayload = priority
+    const codexPriority = fastMode && model.api === 'openai-codex-responses'
+    const cursorFast =
+      fastMode && model.api === 'cursor-agent' && supportsFastMode(model)
+    const wireContext =
+      model.api === 'cursor-agent' && cursorContext && cursorContext !== 'auto'
+        ? cursorContext
+        : undefined
+    const previousOnPayload = codexPriority
       ? async (payload: unknown, payloadModel: Model<Api>) => {
           const upstream = await options?.onPayload?.(payload, payloadModel)
           const current = (upstream === undefined ? payload : upstream) as object
@@ -562,8 +580,16 @@ export async function resolveAgentModel(
           }
         : {}),
       ...(reasoning ? { reasoning } : {}),
-      ...(offFields ? { samplingParams: { ...options?.samplingParams, ...offFields } } : {}),
-      ...(priority ? { onPayload: previousOnPayload } : {})
+      ...(() => {
+        const samplingParams = {
+          ...options?.samplingParams,
+          ...(offFields ?? {}),
+          ...(cursorFast ? { cursorFast: true } : {}),
+          ...(wireContext ? { cursorContext: wireContext } : {})
+        }
+        return Object.keys(samplingParams).length > 0 ? { samplingParams } : {}
+      })(),
+      ...(codexPriority ? { onPayload: previousOnPayload } : {})
     }
     const firstTry = models.streamSimple(model, outgoing, {
       ...baseOptions,

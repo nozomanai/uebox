@@ -174,6 +174,12 @@ export interface AIConfigState {
   agentFastMode?: boolean
 
   /**
+   * Cursor 订阅的 Context 档。缺省 500k —— 与 Cursor 客户端 Grok 默认一致。
+   * `auto` 保留兼容：不发 context 参数，完全随服务端默认。
+   */
+  agentCursorContext?: 'auto' | '256k' | '500k'
+
+  /**
    * 技能沉淀档位。缺省是 `ask` —— 想沉淀时先问用户。
    *
    * 和思考程度一样存用户的选择本身，不做推导：没选过就是默认那档。
@@ -466,6 +472,16 @@ export const useAIConfigStore = defineStore(
 
     function setAgentFastMode(on: boolean): void {
       config.value.agentFastMode = on
+    }
+
+    type AgentCursorContext = NonNullable<AIConfigState['agentCursorContext']>
+
+    const agentCursorContext = computed<AgentCursorContext>(
+      () => config.value.agentCursorContext ?? '500k'
+    )
+
+    function setAgentCursorContext(tier: AgentCursorContext): void {
+      config.value.agentCursorContext = tier
     }
 
     /**
@@ -854,6 +870,8 @@ export const useAIConfigStore = defineStore(
       setAgentThinkingLevel,
       agentFastMode,
       setAgentFastMode,
+      agentCursorContext,
+      setAgentCursorContext,
       skillLearningMode,
       setSkillLearningMode,
       followUpBehavior,

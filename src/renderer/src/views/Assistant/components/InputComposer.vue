@@ -477,7 +477,7 @@
                     })
                   }}
                 </div>
-                <!-- 「快速」只有支持的模型才露出来（目前是 ChatGPT 订阅），见主进程 supportsFastMode -->
+                <!-- 「快速」只有支持的模型才露出来（Codex / Cursor Composer·Grok），见 supportsFastMode -->
                 <button
                   v-if="thinkingSupport?.fastMode"
                   type="button"
@@ -497,6 +497,28 @@
                     <PhCheck />
                   </div>
                 </button>
+                <template v-if="thinkingSupport?.contextTiers?.length">
+                  <div class="mode-dropdown-section">
+                    {{ t('assistantInputComposer.thinking.context') }}
+                  </div>
+                  <button
+                    v-for="tier in thinkingSupport.contextTiers"
+                    :key="tier"
+                    type="button"
+                    class="mode-option"
+                    :class="{ active: cursorContextOn === tier }"
+                    :aria-pressed="cursorContextOn === tier"
+                    @click="selectCursorContext(tier)"
+                  >
+                    <span class="thinking-level-name">{{ formatContextTierLabel(tier) }}</span>
+                    <span class="mode-option-desc">{{
+                      t(`assistantInputComposer.thinking.context${tier}Desc`)
+                    }}</span>
+                    <div v-if="cursorContextOn === tier" class="mode-option-check">
+                      <PhCheck />
+                    </div>
+                  </button>
+                </template>
               </div>
             </Transition>
           </div>
@@ -808,8 +830,10 @@ import assetNoteAPI from '@renderer/api/assetNote'
 import { aiProviderAPI } from '@/api/aiProvider'
 import {
   buildThinkingOptions,
+  formatContextTierLabel,
   resolveEffectiveLevel,
   thinkingDisplayLabel,
+  type AgentCursorContext,
   type ModelThinkingSupport
 } from '../composables/thinkingLevels'
 import { buildAgentModelCatalog, type AgentModelOption } from '../composables/agentModelSelection'
@@ -1335,6 +1359,16 @@ const effectiveThinkingLevel = computed(() =>
 const fastModeOn = computed(
   () => aiConfigStore.agentFastMode && thinkingSupport.value?.fastMode === true
 )
+/** 当前选中的 Cursor Context；无档位时忽略 */
+const cursorContextOn = computed(() => {
+  if (!thinkingSupport.value?.contextTiers?.length) return null
+  const choice = aiConfigStore.agentCursorContext
+  if (choice === 'auto') return '500k' satisfies AgentCursorContext
+  return choice
+})
+function selectCursorContext(tier: '256k' | '500k'): void {
+  aiConfigStore.setAgentCursorContext(tier)
+}
 const thinkingClamped = computed(() => effectiveThinkingLevel.value !== thinkingLevel.value)
 
 /** 触发器上那个词。显示实际会用的那一档，不是用户存的那一档 */
@@ -3844,6 +3878,17 @@ onMounted(() => {
 
 /* 下拉底部那句说明（档位属于哪个模型 / 被夹到了哪一档）。挂在选项下面
    而不是做成 tooltip：下拉是往上弹的，浮层会压住选项把点击吃掉（审批那边踩过） */
+.mode-dropdown-section {
+  padding: 8px 12px 4px;
+  border-top: 1px solid var(--color-border-subtle);
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .mode-dropdown-note {
   padding: 6px 12px 2px;
   border-top: 1px solid var(--color-border-subtle);

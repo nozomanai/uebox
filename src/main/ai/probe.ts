@@ -344,6 +344,11 @@ export async function listRemoteModels(
     return { ok: false, error: { code: 'listUnsupportedCodex' } }
   }
 
+  // Cursor 订阅的模型列表不在 /models。内置清单就是可选项，手填 wire id 也行
+  if (provider.protocol === 'cursor-agent') {
+    return { ok: false, error: { code: 'listUnsupportedCursor' } }
+  }
+
   // CodeBuddy 同理：只有对话端点，没有 /models。目录里预置了官方 CLI 列出的型号
   if (provider.baseUrl.startsWith(CODEBUDDY_ORIGIN)) {
     return { ok: false, error: { code: 'listUnsupportedProtocol' } }

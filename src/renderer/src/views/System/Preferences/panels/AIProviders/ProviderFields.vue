@@ -30,6 +30,8 @@ const PROTOCOLS: ProviderProtocol[] = [
   // ChatGPT 订阅账号专用。列出来是因为用户可能自己新建一个 Provider 指向
   // 同一个后端；从目录里添加 ChatGPT Plus / Pro 时已经预置好了。
   'openai-codex-responses',
+  // Cursor 订阅。从目录添加时已经预置；列在这里是为了手建一条指向同一后端。
+  'cursor-agent',
   'anthropic-messages',
   'google-generative-ai'
 ]

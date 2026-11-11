@@ -239,7 +239,9 @@ async function copyUserCode(): Promise<void> {
         $t(
           oauthEntry.id === 'zcode'
             ? 'aiProvider.apiKey.zcodeLinked'
-            : 'aiProvider.apiKey.oauthLinked',
+            : oauthEntry.id === 'cursor'
+              ? 'aiProvider.apiKey.cursorLinked'
+              : 'aiProvider.apiKey.oauthLinked',
           { name: oauthEntry.displayName }
         )
       }}</span>
@@ -255,6 +257,7 @@ async function copyUserCode(): Promise<void> {
 
     <p class="hint">{{ $t('aiProvider.apiKey.hint') }}</p>
     <p v-if="oauthEntry?.id === 'zcode'" class="hint">{{ $t('aiProvider.apiKey.zcodeHint') }}</p>
+    <p v-else-if="oauthEntry?.id === 'cursor'" class="hint">{{ $t('aiProvider.apiKey.cursorHint') }}</p>
 
     <!-- 设备码流程：把码显示出来，浏览器已自动打开，输不进去时可手输 -->
     <AppModal

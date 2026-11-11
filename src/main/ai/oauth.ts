@@ -3,6 +3,7 @@ import type { AddressInfo } from 'net'
 import { createHash, randomBytes } from 'crypto'
 import { shell } from 'electron'
 import { refreshCodeBuddyTokens, runCodeBuddyLogin } from './codebuddy'
+import { refreshCursorTokens, runCursorLogin } from './cursor/login'
 import { runZCodeLogin } from './zcode'
 
 /**
@@ -33,6 +34,8 @@ import { runZCodeLogin } from './zcode'
  * - CodeBuddy：腾讯**没有**开放 API，是照着官方 CLI 的登录与请求头直连，
  *   协议来源与风险见 codebuddy.ts 顶部。这几条里最可能失效、也最可能引来
  *   账号限制的一条
+ * - Cursor：浏览器登录与 `agent login` 相同（loginDeepControl + poll），
+ *   对话走订阅的 AgentService，不是控制台 API Key。见 cursor/login.ts
  */
 
 /** 授权窗口。用户要去浏览器点同意，给足时间但不能无限等 */
@@ -95,11 +98,16 @@ interface ZCodeProviderSpec {
   grant: 'zcode'
 }
 
+interface CursorProviderSpec {
+  grant: 'cursor'
+}
+
 export type OAuthProviderSpec =
   | PkceProviderSpec
   | DeviceProviderSpec
   | CodeBuddyProviderSpec
   | ZCodeProviderSpec
+  | CursorProviderSpec
 
 export const OAUTH_PROVIDERS: Readonly<Record<string, OAuthProviderSpec>> = Object.freeze({
   openrouter: {
@@ -137,7 +145,8 @@ export const OAUTH_PROVIDERS: Readonly<Record<string, OAuthProviderSpec>> = Obje
     clientId: '17e5f671-d194-4dfb-9706-5516cb48c098'
   },
   codebuddy: { grant: 'codebuddy' },
-  zcode: { grant: 'zcode' }
+  zcode: { grant: 'zcode' },
+  cursor: { grant: 'cursor' }
 })
 
 export function getOAuthSpec(providerId: string): OAuthProviderSpec | undefined {
@@ -208,6 +217,7 @@ export async function refreshOAuthTokens(
   const spec = OAUTH_PROVIDERS[providerId]
   if (!spec) throw new Error(`${providerId} 不支持账号登录`)
   if (spec.grant === 'zcode') throw new Error('ZCode token expired. Sign in to ZCode again.')
+  if (spec.grant === 'cursor') return refreshCursorTokens(tokens)
   if (!tokens.refreshToken) throw new Error('没有 refresh_token，需要重新登录')
   if (spec.grant === 'codebuddy') return refreshCodeBuddyTokens(tokens)
 
@@ -523,6 +533,9 @@ export async function runOAuthLogin(
     }
     if (spec.grant === 'codebuddy') {
       return await runCodeBuddyLogin({ openUrl: (url) => shell.openExternal(url), signal })
+    }
+    if (spec.grant === 'cursor') {
+      return await runCursorLogin({ openUrl: (url) => shell.openExternal(url) }, signal)
     }
     return spec.grant === 'device'
       ? await runDeviceLogin(spec, onPrompt, signal)

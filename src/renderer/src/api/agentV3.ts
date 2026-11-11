@@ -131,6 +131,8 @@ export const agentV3API = {
     thinkingLevel?: AgentV3ThinkingLevel
     /** 「快速」：Codex 订阅走 priority 档，别的模型忽略 */
     fastMode?: boolean
+    /** Cursor Context 档 */
+    cursorContext?: 'auto' | '256k' | '500k'
     /** 对话归属的 UE 工程；不传主进程就只能拿当前连接当「这个工程」 */
     sessionProject?: AgentV3SessionProject | null
   }) {

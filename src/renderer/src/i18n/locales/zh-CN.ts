@@ -570,6 +570,8 @@ export default {
       zcodeLinked: '已用 {name} 账号登录，令牌失效后请重新登录',
       zcodeHint:
         '请先在 ZCode 授权并开通 Coding Plan，再通过 Z.ai 账号登录；也可填写订阅 JWT。此入口只使用 ZCode 订阅，不回退到普通 API 余额。平台要求重新验证时，请在 ZCode 完成验证后重试。',
+      cursorLinked: '已用 {name} 账号登录，令牌过期会自动续期',
+      cursorHint: '使用 Cursor 订阅登录，不需要 API Key。浏览器里批准后即可对话、选择模型；模型的思考会显示在回复里。',
       oauthKeyFetched: '已从 {name} 取回密钥并填入上方，点「保存」后生效',
       oauthShared: '沿用「{name}」的账号登录，点「保存」即可',
       getKey: '去获取 API 密钥 ↗',
@@ -640,6 +642,8 @@ export default {
       listUnsupportedProtocol: '该协议没有通用的模型列表接口，请手动填写模型 ID。',
       listUnsupportedCodex:
         'ChatGPT 订阅接口不提供模型列表。可用型号见内置清单，或按官方公告手动填写。',
+      listUnsupportedCursor:
+        'Cursor 订阅不提供模型列表。请从内置清单里选，或按 Cursor 里显示的模型 ID 手填。',
       listHttpError: '获取模型列表失败。',
       listEmpty: '服务商返回的模型列表为空。',
       // 渲染层自己产生的：界面上压根没有草稿可测（正常操作路径走不到）
@@ -6064,7 +6068,10 @@ export default {
       maxDesc: '最高强度推理',
       clamped: '{model} 不支持 {chosen} 档位，本次按 {actual} 执行',
       fast: '快速',
-      fastDesc: '响应更快，额度消耗约 2 倍'
+      fastDesc: '响应更快，额度消耗约 2 倍',
+      context: '上下文',
+      context256kDesc: '标准窗口（256K）',
+      context500kDesc: '更大上下文（500K，Max Mode）'
     },
     approval: {
       readOnlyLabel: '只读',

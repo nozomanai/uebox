@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createProxyAwareFetch, describeFetchRoute, pacWantsProxy } from './systemProxyFetch'
+import {
+  createProxyAwareFetch,
+  describeFetchRoute,
+  pacWantsProxy,
+  parsePacProxy
+} from './systemProxyFetch'
 
 type Mocked = ReturnType<typeof vi.fn>
 
@@ -83,6 +88,17 @@ describe('createProxyAwareFetch', () => {
     const { fetchFn, resolveProxy } = setup('DIRECT')
     await fetchFn(new Request('https://chatgpt.com/backend-api/codex/responses'))
     expect(resolveProxy).toHaveBeenCalledWith('https://chatgpt.com/backend-api/codex/responses')
+  })
+})
+
+describe('parsePacProxy', () => {
+  it('只认 PROXY host:port 的第一跳', () => {
+    expect(parsePacProxy('PROXY 127.0.0.1:7890; DIRECT')).toEqual({
+      host: '127.0.0.1',
+      port: 7890
+    })
+    expect(parsePacProxy('DIRECT')).toBeUndefined()
+    expect(parsePacProxy('SOCKS 127.0.0.1:1080')).toBeUndefined()
   })
 })
 

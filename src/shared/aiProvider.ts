@@ -29,6 +29,14 @@ export type ProviderProtocol =
    * 所以它必须是独立的一档，不能复用 openai-responses。
    */
   | 'openai-codex-responses'
+  /**
+   * Cursor 订阅的 AgentService（`api2.cursor.sh` 上的 Connect / HTTP/2）。
+   *
+   * 不是 API Key，也不是 OpenAI 兼容接口：登录走 CLI 那条浏览器授权，
+   * 对话必须带流式 protobuf。思考增量、工具调用都从这帧流里拆出来。
+   * 不能复用上面任何一档。
+   */
+  | 'cursor-agent'
   | 'anthropic-messages'
   | 'google-generative-ai'
 
@@ -1074,6 +1082,8 @@ export type ProbeErrorCode =
   | 'listUnsupportedProtocol'
   /** ChatGPT 订阅只有 /responses 一个端点 */
   | 'listUnsupportedCodex'
+  /** Cursor 订阅没有 /models，型号用内置清单或手填 */
+  | 'listUnsupportedCursor'
   /** /models 回了非 2xx，`raw` 是状态码 */
   | 'listHttpError'
   /** 接通了，但厂商回了个空列表 */

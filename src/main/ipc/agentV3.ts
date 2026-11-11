@@ -913,6 +913,8 @@ export interface AgentV3ExecuteArgs {
   thinkingLevel?: ThinkingLevelChoice
   /** 模型菜单里的「快速」。和思考程度一样住在渲染层，每轮带过来 */
   fastMode?: boolean
+  /** Cursor Context 档（256k / 500k）。auto = 不发，随服务端默认 */
+  cursorContext?: 'auto' | '256k' | '500k'
   /**
    * 技能沉淀档位。不传等同 ask。
    *
@@ -2181,6 +2183,7 @@ export function registerAgentV3IPC(): void {
       approvalMode = 'ask',
       thinkingLevel = 'auto',
       fastMode = false,
+      cursorContext = 'auto',
       skillLearning = 'ask',
       // 兜底值只有 `EDITOR_SCREENSHOT_DEFAULT` 这一份，渲染层和 zod 校验读的是
       // 同一个语义 —— 三层各写各的默认，用户一个开关都没动过就会看到两种行为
@@ -2264,6 +2267,7 @@ export function registerAgentV3IPC(): void {
         alwaysAllowed: alwaysAllowedFor(sessionId),
         thinkingLevel,
         fastMode,
+        cursorContext,
         skillLearning,
         // 关着的话 `ue_screenshot` 不进这一轮的工具池，系统提示词里那句
         // 「拍一张确认一下」也跟着换掉（见 `createAgent.ts`）
@@ -2387,6 +2391,7 @@ export function registerAgentV3IPC(): void {
         ...(sessionProject !== undefined ? { sessionProject } : {}),
         thinkingLevel,
         fastMode,
+        cursorContext,
         skillLearning,
         ...(sessionModel.record ? { model: sessionModel.record } : {}),
         // 落盘是为了「从断点继续」—— 那条路不经过渲染层，读不到这一档的话，
@@ -2783,6 +2788,7 @@ export function registerAgentV3IPC(): void {
       isReadOnly: () => readOnlyBySession.get(sessionId) === true,
       thinkingLevel: options.thinkingLevel,
       fastMode: options.fastMode,
+      cursorContext: options.cursorContext,
       skillLearning: options.skillLearning,
       // 同上：这一档也从执行记录里来，不然续跑那半程 `ue_screenshot` 会重新出现
       editorScreenshotEnabled: options.editorScreenshotEnabled,

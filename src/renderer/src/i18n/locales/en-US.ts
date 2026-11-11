@@ -569,6 +569,9 @@ First work out why the install failed from the output above. If you can run comm
       oauthRelogin: 'Sign in again',
       oauthLinked: 'Signed in with {name}. Tokens refresh automatically',
       zcodeLinked: 'Signed in with {name}. Sign in again when the token expires',
+      cursorLinked: 'Signed in with {name}. The token refreshes automatically',
+      cursorHint:
+        'Sign in with your Cursor subscription. No API key. After you approve the browser login you can chat and pick a model; the model’s reasoning shows in the reply.',
       zcodeHint:
         'Authorize your account in ZCode and activate Coding Plan before signing in with Z.ai, or enter a subscription JWT. This connection only uses the ZCode subscription and never falls back to API balance. If verification is required, complete it in ZCode and retry.',
       oauthKeyFetched: 'Key fetched from {name} and filled in above — click Save to apply',
@@ -648,6 +651,8 @@ First work out why the install failed from the output above. If you can run comm
         'This protocol has no common model-list endpoint. Enter the model ID by hand.',
       listUnsupportedCodex:
         'The ChatGPT subscription endpoint does not expose a model list. See the built-in catalog, or enter one from the official announcements.',
+      listUnsupportedCursor:
+        'The Cursor subscription does not expose a model list. Pick one from the built-in catalog, or type the model ID shown in Cursor.',
       listHttpError: 'Could not fetch the model list.',
       listEmpty: 'The provider returned an empty list.',
       // Produced in the renderer: there is no draft to test (unreachable in normal use)
@@ -6235,7 +6240,10 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
       maxDesc: 'Maximum reasoning',
       clamped: '{model} has no {chosen} level — this run uses {actual} instead',
       fast: 'Fast',
-      fastDesc: 'Faster responses, uses about 2× quota'
+      fastDesc: 'Faster responses, uses about 2× quota',
+      context: 'Context',
+      context256kDesc: 'Standard window (256K)',
+      context500kDesc: 'Larger context (500K, Max Mode)'
     },
     approval: {
       readOnlyLabel: 'Read only',

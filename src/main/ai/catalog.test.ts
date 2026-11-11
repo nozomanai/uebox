@@ -158,6 +158,27 @@ describe('内置 Provider 目录', () => {
    * CodeBuddy 没有 `/models`，清单空着用户登录完就无模型可选；
    * baseUrl 必须和 codebuddy.ts 里的常量一致，否则请求头与探测的特判都对不上。
    */
+  it('Cursor 订阅走账号登录、不使用 API Key 协议，并预置了可选模型', () => {
+    const cursor = CATALOG.find((entry) => entry.id === 'cursor')
+    expect(cursor?.group).toBe('subscription')
+    expect(cursor?.protocol).toBe('cursor-agent')
+    expect(cursor?.supportsOAuth).toBe(true)
+    expect(cursor?.baseUrl).toBe('https://agentn.global.api5.cursor.sh')
+    expect(cursor?.models.some((model) => model.id === 'auto')).toBe(true)
+    expect(cursor?.models.every((model) => model.supportsTools)).toBe(true)
+    const grok47 = cursor?.models.find((model) => model.id === 'grok-4.7')
+    expect(grok47?.thinkingLevelMap).toMatchObject({
+      low: 'low',
+      high: 'high',
+      xhigh: 'extra_high',
+      minimal: null
+    })
+    const composer = cursor?.models.find((model) => model.id === 'composer-2.5')
+    expect(composer?.supportsReasoning).toBe(false)
+    expect(cursor?.models.some((model) => model.id === 'grok-4.6')).toBe(true)
+    expect(grok47?.contextWindow).toBe(500_000)
+  })
+
   it('CodeBuddy 走账号登录、直连官方端点、预置了可选模型', () => {
     const codebuddy = CATALOG.find((entry) => entry.id === 'codebuddy')
     expect(codebuddy?.group).toBe('subscription')

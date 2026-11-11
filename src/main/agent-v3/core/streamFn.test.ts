@@ -203,6 +203,34 @@ describe('快速模式', () => {
     })
   })
 
+  it('Cursor Grok 带上 cursorContext', async () => {
+    const cursorModel = { id: 'grok-4.7', provider: 'cursor', api: 'cursor-agent' }
+    MODELS_BY_ID['grok-4.7'] = cursorModel
+    const runtime = await resolveAgentModel({ role: 'agent' }, 'auto', false, '500k')
+    runtime.streamFn(cursorModel as never, EMPTY_CONTEXT, undefined as never)
+    const options = streamSimple.mock.calls.at(-1)?.[2] as {
+      samplingParams?: { cursorContext?: string }
+    }
+    expect(options?.samplingParams?.cursorContext).toBe('500k')
+  })
+
+  it('Cursor Grok 开了 Fast 走 samplingParams.cursorFast，不加 service_tier', async () => {
+    const cursorModel = {
+      id: 'grok-4.7',
+      provider: 'cursor',
+      api: 'cursor-agent'
+    }
+    MODELS_BY_ID['grok-4.7'] = cursorModel
+    const runtime = await resolveAgentModel({ role: 'agent' }, 'auto', true)
+    runtime.streamFn(cursorModel as never, EMPTY_CONTEXT, undefined as never)
+    const options = streamSimple.mock.calls.at(-1)?.[2] as {
+      samplingParams?: { cursorFast?: boolean }
+      onPayload?: unknown
+    }
+    expect(options?.samplingParams?.cursorFast).toBe(true)
+    expect(options?.onPayload).toBeUndefined()
+  })
+
   it('档位清单里报出这个模型能不能开', async () => {
     expect((await listThinkingLevels({ role: 'agent' }))?.fastMode).toBe(true)
   })
