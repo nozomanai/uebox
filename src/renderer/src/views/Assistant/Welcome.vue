@@ -490,7 +490,7 @@ const suggestions = computed<SuggestionItem[]>(() => {
       prompt: t('assistant.suggestions.buildPackage.prompt')
     }
   ]
-  // MegaJam 卡片到 2026-11-30 为止，过期自动消失
+  // 比赛截止（2026-11-16 10:00）前，MegaJam 卡片顶替第一张「知识问答」
   return withMegaJamSuggestion(defaults, {
     title: t('assistant.suggestions.megaJam.title'),
     description: t('assistant.suggestions.megaJam.desc'),

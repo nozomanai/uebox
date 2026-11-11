@@ -2524,7 +2524,7 @@ export default {
       greetingPrompt: '{greeting}，有什么可以帮您？'
     },
     suggestions: {
-      // 2026-12-01 起不再显示，见 megaJamSuggestion.ts
+      // 2026-11-16 10:00 前顶替「知识问答」，见 megaJamSuggestion.ts
       megaJam: {
         title: 'MegaJam 参赛',
         desc: '2026 Epic AI MegaJam',

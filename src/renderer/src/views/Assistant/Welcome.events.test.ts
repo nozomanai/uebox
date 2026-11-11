@@ -105,14 +105,14 @@ describe('Welcome 建议卡片里的 MegaJam', () => {
     return (cards.props('items') as Array<{ prompt?: string }>).map((item) => item.prompt ?? '')
   }
 
-  it('2026-11-30 23:59 排在第一张', () => {
-    const prompts = suggestionPrompts(new Date(2026, 10, 30, 23, 59))
-    expect(prompts).toHaveLength(4)
+  it('2026-11-16 09:59 顶替第一张，仍是三张', () => {
+    const prompts = suggestionPrompts(new Date(2026, 10, 16, 9, 59))
+    expect(prompts).toHaveLength(3)
     expect(prompts[0]).toContain('MegaJam')
   })
 
-  it('2026-12-01 00:00 起不含这张', () => {
-    const prompts = suggestionPrompts(new Date(2026, 11, 1, 0, 0))
+  it('2026-11-16 10:00 起不含这张', () => {
+    const prompts = suggestionPrompts(new Date(2026, 10, 16, 10, 0))
     expect(prompts).toHaveLength(3)
     expect(prompts.some((prompt) => prompt.includes('MegaJam'))).toBe(false)
   })

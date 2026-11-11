@@ -2581,7 +2581,7 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
       greetingPrompt: '{greeting}, how can I help you?'
     },
     suggestions: {
-      // Hidden from 2026-12-01, see megaJamSuggestion.ts
+      // Replaces the first card until 2026-11-16 10:00, see megaJamSuggestion.ts
       megaJam: {
         title: 'Join MegaJam',
         desc: '2026 Epic AI MegaJam',

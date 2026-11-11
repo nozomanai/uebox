@@ -14,7 +14,7 @@
 - 打包工具：`project_package` 可用 `maps` 只烘焙指定地图；`project_zip_build` 压成「队名_游戏名.zip」并检查
   itch.io 的 1 GB 上限；`project_find_non_english_text` 扫出工程里没换成英文的文字
 - `record_gameplay_video`：录打包版窗口或 PIE 窗口，装了 FFmpeg 输出 MP4
-- 欢迎页在 11 月 30 日前多一张「MegaJam 参赛」建议卡片
+- 比赛截止（11 月 16 日）前，欢迎页第一张建议卡片换成「MegaJam 参赛」
 - Box Plan：2026 Epic AI MegaJam 参赛登记和交卷；对话里可以让 Agent 用 `box_plan` 工具代办连接、登记、导入模型
 - 一键把盒子的对外 MCP 写进 Claude Code / Codex 的用户级配置
 - 对话导出 Markdown 带上每轮调用的工具和改动清单
