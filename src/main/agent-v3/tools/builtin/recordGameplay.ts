@@ -25,12 +25,13 @@ import type { WindowSource } from '../../../services/windowRecorder'
  * 选要录的窗口。
  *
  * - 点了名：名字里含这段文字的第一个
- * - 起了打包版：启动后才出现的窗口里，最后出现的那个（UE 打包版先弹启动画面，再开游戏窗口）
+ * - 起了打包版：启动后才出现的窗口里，标题含游戏名的优先（同时弹出来的别的程序窗口不算），
+ *   没有就取最后出现的那个（UE 打包版先弹启动画面，再开游戏窗口）
  * - 录 PIE：新窗口模式的 PIE（标题带「Preview [NetMode」）优先，其次是这个工程的编辑器窗口
  */
 export function pickWindow(
   sources: WindowSource[],
-  options: { before?: WindowSource[]; titleHint?: string; projectName?: string }
+  options: { before?: WindowSource[]; titleHint?: string; projectName?: string; gameName?: string }
 ): WindowSource | null {
   if (options.titleHint) {
     const hint = options.titleHint.toLowerCase()
@@ -39,9 +40,11 @@ export function pickWindow(
   if (options.before) {
     const old = new Set(options.before.map((s) => s.id))
     const fresh = sources.filter((s) => !old.has(s.id) && s.name.trim())
-    return fresh[fresh.length - 1] ?? null
+    const game = options.gameName?.toLowerCase()
+    const named = game ? fresh.filter((s) => s.name.toLowerCase().includes(game)) : []
+    return named[named.length - 1] ?? fresh[fresh.length - 1] ?? null
   }
-  const pie = sources.find((s) => /Preview \[NetMode/i.test(s.name))
+  const pie = pickPieWindow(sources)
   if (pie) return pie
   const editors = sources.filter((s) => /Unreal Editor/i.test(s.name))
   const project = options.projectName?.toLowerCase()
@@ -49,6 +52,21 @@ export function pickWindow(
     (project && editors.find((s) => s.name.toLowerCase().includes(project))) || editors[0] || null
   )
 }
+
+/** 新窗口模式的 PIE：标题带「Preview [NetMode」 */
+export function pickPieWindow(sources: WindowSource[]): WindowSource | null {
+  return sources.find((s) => /Preview \[NetMode/i.test(s.name)) ?? null
+}
+
+/** 打包版 exe 的文件名 → 游戏窗口标题里会有的那个名字 */
+export function gameNameOf(exePath: string): string {
+  return basename(exePath)
+    .replace(/\.exe$/i, '')
+    .replace(/-(Win64|Mac|Linux)-(Shipping|Development|Test|DebugGame)$/i, '')
+}
+
+/** 同时调了 ue_autoplay 时，PIE 窗口要过一会儿才出来：等这么久再认定它开在视口里 */
+const PIE_WINDOW_WAIT_SECONDS = 20
 
 /** webm → MP4（H.264，yuv420p，宽高取偶数 —— 不取偶 libx264 直接报错） */
 export function mp4Args(input: string, output: string): string[] {
@@ -125,6 +143,12 @@ export interface RecordResult {
   bytes: number
   format: 'mp4' | 'webm'
   window: string
+  /** 采到的帧数；报不出来时是 null */
+  frames: number | null
+  /** 录的是整个编辑器窗口，不是 PIE 的独立窗口 */
+  wholeEditor: boolean
+  /** 中途被停止 */
+  stopped: boolean
 }
 
 export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
@@ -142,6 +166,8 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
       const { listWindowSources, recordWindow } = await import('../../../services/windowRecorder')
       const projectDir = getTargetProjectPath()
       let game: ChildProcess | null = null
+      // 没等到 PIE 的独立窗口，录的是整个编辑器窗口 —— 回执里要说明
+      let wholeEditor = false
       try {
         let target: WindowSource | null
         if (args.exe_path) {
@@ -149,6 +175,13 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
             throw new Error(`找不到 ${args.exe_path}`)
           })
           const before = await listWindowSources()
+          const gameName = gameNameOf(args.exe_path)
+          const pick = async (): Promise<WindowSource | null> =>
+            pickWindow(await listWindowSources(), {
+              before,
+              titleHint: args.window_title,
+              gameName
+            })
           game = spawn(args.exe_path, ['-windowed', '-ResX=1280', '-ResY=720'], {
             cwd: dirname(args.exe_path),
             stdio: 'ignore',
@@ -160,20 +193,31 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
             await sleep(1000, ctx.signal)
             if (game.exitCode !== null)
               throw new Error(`游戏启动后就退出了（退出码 ${game.exitCode}）`)
-            target = pickWindow(await listWindowSources(), { before, titleHint: args.window_title })
+            target = await pick()
           }
           if (!target) throw new Error('等了 90 秒没看到游戏窗口')
           // 启动画面之后才是游戏窗口：再等一会儿重新挑一次
           await sleep(4000, ctx.signal)
-          target =
-            pickWindow(await listWindowSources(), { before, titleHint: args.window_title }) ??
-            target
+          target = (await pick()) ?? target
         } else {
-          const sources = await listWindowSources()
-          target = pickWindow(sources, {
-            titleHint: args.window_title,
-            projectName: projectDir ? basename(projectDir) : undefined
-          })
+          let sources = await listWindowSources()
+          const pickNow = (): WindowSource | null =>
+            pickWindow(sources, {
+              titleHint: args.window_title,
+              projectName: projectDir ? basename(projectDir) : undefined
+            })
+          target = pickNow()
+          // 编辑器在、PIE 窗口还没出来：ue_autoplay 刚开始点 Play，等它一会儿
+          if (target && !args.window_title && !pickPieWindow(sources)) {
+            ctx.report({ text: '等 PIE 窗口出来' })
+            for (let waited = 0; waited < PIE_WINDOW_WAIT_SECONDS; waited++) {
+              await sleep(1000, ctx.signal)
+              sources = await listWindowSources()
+              if (pickPieWindow(sources)) break
+            }
+            target = pickNow() ?? target
+            wholeEditor = !pickPieWindow(sources)
+          }
           if (!target) {
             throw new Error(
               args.window_title
@@ -195,7 +239,7 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
         const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
         const webm = join(dir, `gameplay-${stamp}.webm`)
         ctx.report({ text: `开始录制「${target.name}」，${args.seconds} 秒` })
-        await recordWindow({
+        const { frames } = await recordWindow({
           sourceId: target.id,
           seconds: args.seconds,
           output: webm,
@@ -205,9 +249,13 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
 
         let path = webm
         let format: RecordResult['format'] = 'webm'
-        let note = '没装 FFmpeg，输出的是 webm（B 站、YouTube 都能直接传）。'
+        // 中途点了停止：录到的那一段留着，不再花时间转码
+        const stopped = ctx.signal?.aborted === true
+        let note = stopped
+          ? '录制被中途停止，只有停止前的那一段，没有转成 MP4。'
+          : '没装 FFmpeg，输出的是 webm（B 站、YouTube 都能直接传）。'
         const { findFFmpeg } = await import('../../../services/ffmpegPath')
-        const ffmpeg = await findFFmpeg()
+        const ffmpeg = stopped ? null : await findFFmpeg()
         if (ffmpeg) {
           ctx.report({ text: '转成 MP4' })
           const mp4 = webm.replace(/\.webm$/, '.mp4')
@@ -224,12 +272,17 @@ export function createRecordGameplayTool(): UnrealAgentTool<RecordResult> {
         const bytes = (await fs.stat(path)).size
         return {
           text: [
-            `录好了：${path}（${Math.round(bytes / 100_000) / 10} MB，录的窗口：${target.name}）`,
+            `${stopped ? '已停止' : '录好了'}：${path}（${Math.round(bytes / 100_000) / 10} MB` +
+              `${frames === null ? '' : `，${frames} 帧`}，录的窗口：${target.name}）`,
+            wholeEditor
+              ? `${PIE_WINDOW_WAIT_SECONDS} 秒内没有出现 PIE 的独立窗口，录的是整个编辑器窗口（带工具栏和面板）。` +
+                '要只录游戏画面：把播放模式改成「新建编辑器窗口 (PIE)」后重录，或者给 exe_path 录打包版。'
+              : '',
             note
           ]
             .filter(Boolean)
             .join('\n'),
-          details: { path, bytes, format, window: target.name }
+          details: { path, bytes, format, window: target.name, frames, wholeEditor, stopped }
         }
       } finally {
         if (game) killTree(game)

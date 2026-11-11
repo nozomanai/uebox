@@ -37,8 +37,9 @@ export async function listWindowSources(): Promise<WindowSource[]> {
 }
 
 /**
- * 页面里跑的录制脚本。返回 data URL（base64）—— executeJavaScript 只能带回可序列化的值。
- * `window.__ueboxStop()` 让它提前收尾。
+ * 页面里跑的录制脚本。返回 `{ dataUrl, frames }`：data URL 是 base64 —— executeJavaScript
+ * 只能带回可序列化的值；frames 是采集轨道实际送来的帧数（`MediaStreamTrack.stats`），
+ * 这一版 Chromium 没有这个属性时是 null。`window.__ueboxStop()` 让它提前收尾。
  */
 export function recorderScript(sourceId: string, seconds: number, fps: number): string {
   return `(async () => {
@@ -61,14 +62,17 @@ export function recorderScript(sourceId: string, seconds: number, fps: number): 
   // 被录的窗口关掉了：轨道结束，录到哪算哪
   stream.getVideoTracks()[0].onended = () => window.__ueboxStop()
   await done
+  const stats = stream.getVideoTracks()[0].stats
+  const frames = stats && typeof stats.totalFrames === 'number' ? stats.totalFrames : null
   stream.getTracks().forEach((t) => t.stop())
   const blob = new Blob(chunks, { type: 'video/webm' })
-  return await new Promise((resolve, reject) => {
+  const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result)
     reader.onerror = () => reject(reader.error)
     reader.readAsDataURL(blob)
   })
+  return { dataUrl, frames }
 })()`
 }
 
@@ -80,8 +84,32 @@ export interface RecordOptions {
   signal?: AbortSignal
 }
 
-/** 录 `seconds` 秒写到 `output`（.webm）。返回实际字节数 */
-export async function recordWindow(options: RecordOptions): Promise<number> {
+export interface RecordOutcome {
+  bytes: number
+  /** 采到的帧数；这一版 Chromium 报不出来时是 null */
+  frames: number | null
+}
+
+/** 窗口最小化、被系统拒绝采集时，容器照样写得出来，只是里面一帧画面都没有 */
+const NO_FRAMES = '一帧画面都没录到：被录的窗口可能最小化了或已经关了。把它还原到桌面上再录'
+
+/**
+ * 录制脚本的返回值 → 视频字节和帧数。没数据、0 帧都抛错：
+ * 一个打不开的视频文件交到模型手里，它会当成录好了。
+ */
+export function parseRecording(value: unknown): { data: Buffer; frames: number | null } {
+  const raw = value as { dataUrl?: unknown; frames?: unknown } | null
+  const dataUrl = raw?.dataUrl
+  if (typeof dataUrl !== 'string' || !dataUrl.includes(',')) throw new Error('录制没有产出数据')
+  const frames = typeof raw?.frames === 'number' ? raw.frames : null
+  if (frames === 0) throw new Error(NO_FRAMES)
+  const data = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
+  if (!data.length) throw new Error(NO_FRAMES)
+  return { data, frames }
+}
+
+/** 录 `seconds` 秒写到 `output`（.webm）。返回实际字节数和帧数 */
+export async function recordWindow(options: RecordOptions): Promise<RecordOutcome> {
   const { BrowserWindow, session } = await import('electron')
   const partition = `window-recorder-${randomUUID()}`
   const isolated = session.fromPartition(partition, { cache: false })
@@ -117,15 +145,14 @@ export async function recordWindow(options: RecordOptions): Promise<number> {
   try {
     await win.loadURL(pathToFileURL(page).href)
     options.signal?.addEventListener('abort', onAbort, { once: true })
-    const dataUrl: unknown = await win.webContents.executeJavaScript(
-      recorderScript(options.sourceId, options.seconds, options.fps ?? 30),
-      true
+    const { data, frames } = parseRecording(
+      await win.webContents.executeJavaScript(
+        recorderScript(options.sourceId, options.seconds, options.fps ?? 30),
+        true
+      )
     )
-    if (typeof dataUrl !== 'string' || !dataUrl.includes(',')) throw new Error('录制没有产出数据')
-    const bytes = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
-    if (!bytes.length) throw new Error('录到的视频是空的：被录的窗口可能已经关了或最小化了')
-    await fs.writeFile(options.output, bytes)
-    return bytes.length
+    await fs.writeFile(options.output, data)
+    return { bytes: data.length, frames }
   } finally {
     options.signal?.removeEventListener('abort', onAbort)
     if (!win.isDestroyed()) win.destroy()

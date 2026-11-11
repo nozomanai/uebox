@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../utils/UnrealPathManager', () => ({ default: {} }))
 
-import { mp4Args, pickWindow } from './recordGameplay'
+import { gameNameOf, mp4Args, pickPieWindow, pickWindow } from './recordGameplay'
 
 const w = (id: string, name: string): { id: string; name: string } => ({ id, name })
 
@@ -27,6 +27,24 @@ describe('选要录的窗口', () => {
     const game = w('6', 'NeonFort (64-bit Development PCD3D_SM6)')
     expect(pickWindow([editor, chrome, splash, game], { before })).toBe(game)
     expect(pickWindow([editor, chrome], { before })).toBeNull()
+  })
+
+  it('起了打包版：同时弹出来的别的程序窗口不算，标题含游戏名的优先', () => {
+    const before = [editor, chrome]
+    const game = w('6', 'NeonFort (64-bit Development PCD3D_SM6)')
+    const popup = w('7', 'Windows 安全中心')
+    const gameName = gameNameOf('D:/b/Windows/NeonFort/Binaries/Win64/NeonFort-Win64-Shipping.exe')
+    expect(gameName).toBe('NeonFort')
+    expect(gameNameOf('D:/b/Windows/NeonFort.exe')).toBe('NeonFort')
+    expect(pickWindow([editor, chrome, game, popup], { before, gameName })).toBe(game)
+    // 标题对不上时退回「最后出现的那个」
+    expect(pickWindow([editor, chrome, popup], { before, gameName })).toBe(popup)
+  })
+
+  it('PIE 的独立窗口按标题认', () => {
+    const pie = w('9', 'NeonFort Preview [NetMode: Standalone 0]  (64-bit/PC D3D SM6)')
+    expect(pickPieWindow([editor, pie])).toBe(pie)
+    expect(pickPieWindow([editor, chrome])).toBeNull()
   })
 
   it('点了名就按名字找，大小写不敏感', () => {
