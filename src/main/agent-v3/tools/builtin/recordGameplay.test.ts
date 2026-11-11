@@ -47,6 +47,13 @@ describe('选要录的窗口', () => {
     expect(pickPieWindow([editor, chrome])).toBeNull()
   })
 
+  it('中文界面的编辑器和 PIE 窗口也认得', () => {
+    const zhEditor = w('11', 'NeonFort - 虚幻编辑器')
+    const zhPie = w('12', 'NeonFort 预览 [NetMode: Standalone 0]  (64-bit/PC D3D SM6)')
+    expect(pickWindow([chrome, zhEditor], { projectName: 'NeonFort' })).toBe(zhEditor)
+    expect(pickWindow([chrome, zhEditor, zhPie], { projectName: 'NeonFort' })).toBe(zhPie)
+  })
+
   it('点了名就按名字找，大小写不敏感', () => {
     expect(pickWindow([editor, chrome], { titleHint: 'chrome' })).toBe(chrome)
     expect(pickWindow([editor], { titleHint: 'nope' })).toBeNull()

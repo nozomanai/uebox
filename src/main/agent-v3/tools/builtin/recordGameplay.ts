@@ -46,16 +46,17 @@ export function pickWindow(
   }
   const pie = pickPieWindow(sources)
   if (pie) return pie
-  const editors = sources.filter((s) => /Unreal Editor/i.test(s.name))
+  // 中文界面的编辑器标题是「<工程> - 虚幻编辑器」
+  const editors = sources.filter((s) => /Unreal Editor|虚幻编辑器/i.test(s.name))
   const project = options.projectName?.toLowerCase()
   return (
     (project && editors.find((s) => s.name.toLowerCase().includes(project))) || editors[0] || null
   )
 }
 
-/** 新窗口模式的 PIE：标题带「Preview [NetMode」 */
+/** 新窗口模式的 PIE：标题带「Preview [NetMode」。「Preview」跟着界面语言变，只认后半段 */
 export function pickPieWindow(sources: WindowSource[]): WindowSource | null {
-  return sources.find((s) => /Preview \[NetMode/i.test(s.name)) ?? null
+  return sources.find((s) => /\[NetMode/i.test(s.name)) ?? null
 }
 
 /** 打包版 exe 的文件名 → 游戏窗口标题里会有的那个名字 */
