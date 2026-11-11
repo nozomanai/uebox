@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Welcome from './Welcome.vue'
 import { useChatSessionsStore } from '@renderer/store/modules/chatSessions'
 import {
@@ -88,6 +88,33 @@ describe('Welcome 事件连线', () => {
     const topNav = mountWelcome().findComponent({ name: 'TopNav' })
     expect(topNav.exists()).toBe(true)
     expect(typeof topNav.vm.$attrs.onSideQuestion).toBe('function')
+  })
+})
+
+describe('Welcome 建议卡片里的 MegaJam', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function suggestionPrompts(now: Date): string[] {
+    // 只接管 Date，定时器和 rAF 照常走
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+    const cards = mountWelcome().findComponent({ name: 'SuggestionCards' })
+    expect(cards.exists()).toBe(true)
+    return (cards.props('items') as Array<{ prompt?: string }>).map((item) => item.prompt ?? '')
+  }
+
+  it('2026-11-30 23:59 排在第一张', () => {
+    const prompts = suggestionPrompts(new Date(2026, 10, 30, 23, 59))
+    expect(prompts).toHaveLength(4)
+    expect(prompts[0]).toContain('MegaJam')
+  })
+
+  it('2026-12-01 00:00 起不含这张', () => {
+    const prompts = suggestionPrompts(new Date(2026, 11, 1, 0, 0))
+    expect(prompts).toHaveLength(3)
+    expect(prompts.some((prompt) => prompt.includes('MegaJam'))).toBe(false)
   })
 })
 

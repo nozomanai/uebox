@@ -2581,6 +2581,12 @@ Places to start: whether this .uproject can be read at all and which EngineAssoc
       greetingPrompt: '{greeting}, how can I help you?'
     },
     suggestions: {
+      // Hidden from 2026-12-01, see megaJamSuggestion.ts
+      megaJam: {
+        title: 'Join MegaJam',
+        desc: '2026 Epic AI MegaJam',
+        prompt: "I'm entering the 2026 Epic AI MegaJam. Walk me through the entry process."
+      },
       blueprintDebug: {
         title: 'Performance Analysis',
         desc: 'One-click performance check, display FPS and GPU time',

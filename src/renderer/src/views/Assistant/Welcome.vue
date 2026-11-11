@@ -380,6 +380,7 @@ import { message } from '@renderer/utils/messageManager'
 import { confirmDialog } from '@renderer/utils/dialog'
 import { PhCaretCircleDown, PhTarget, PhX } from '@phosphor-icons/vue'
 import { useGreeting } from './composables/useGreeting'
+import { withMegaJamSuggestion } from './composables/megaJamSuggestion'
 import { useContextChips } from './composables/useContextChips'
 import { useAgentMode } from './composables/useAgentMode'
 import { ensurePermissionMode } from './composables/sessionPermissionMode'
@@ -472,7 +473,7 @@ const suggestions = computed<SuggestionItem[]>(() => {
     ]
   }
   // 默认：智能对话模式
-  return [
+  const defaults: SuggestionItem[] = [
     {
       title: t('assistant.suggestions.blueprintDebug.title'),
       description: t('assistant.suggestions.blueprintDebug.desc'),
@@ -489,6 +490,12 @@ const suggestions = computed<SuggestionItem[]>(() => {
       prompt: t('assistant.suggestions.buildPackage.prompt')
     }
   ]
+  // MegaJam 卡片到 2026-11-30 为止，过期自动消失
+  return withMegaJamSuggestion(defaults, {
+    title: t('assistant.suggestions.megaJam.title'),
+    description: t('assistant.suggestions.megaJam.desc'),
+    prompt: t('assistant.suggestions.megaJam.prompt')
+  })
 })
 
 const messages = computed<ChatMessage[]>(() => chatMsgStore.getMessages(sid.value))

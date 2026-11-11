@@ -2524,6 +2524,12 @@ export default {
       greetingPrompt: '{greeting}，有什么可以帮您？'
     },
     suggestions: {
+      // 2026-12-01 起不再显示，见 megaJamSuggestion.ts
+      megaJam: {
+        title: 'MegaJam 参赛',
+        desc: '2026 Epic AI MegaJam',
+        prompt: '我要参加 2026 Epic AI MegaJam，带我走一遍参赛流程。'
+      },
       // 智能对话模式建议（默认）
       blueprintDebug: {
         title: '知识问答',
