@@ -1,6 +1,6 @@
 {
   "name": "unreal-box",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "虚幻盒子",
   "main": "./out/main/index.js",
   "author": "虚幻盒子科技有限公司",
