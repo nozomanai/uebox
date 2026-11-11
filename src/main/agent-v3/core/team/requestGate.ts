@@ -45,7 +45,6 @@ import type { StreamFn } from '@earendil-works/pi-agent-core'
 import { CODEBUDDY_ORIGIN } from '../../../ai/codebuddy'
 import { isPlanUpstreamUnavailable } from '../../../../shared/creatorPlan'
 import { classifyProviderError } from '../../host/providerError'
-import type { TeamBudget } from './teamBudget'
 
 export interface GateConfig {
   initialLimit: number
@@ -345,11 +344,6 @@ export interface PacedStreamDeps {
    * 不包成「连续 N 次扛不住」—— 那句会被持续续跑当成中转不稳，再转半小时
    */
   freeOnFailure?: (model: Model<Api>) => boolean
-  /**
-   * 工作室一局的 token 封顶（`teamBudget.ts`）。到顶了不发请求，直接回一条说明原因的失败；
-   * 每次回话结束把用量记上去。只有工作室会话带
-   */
-  budget?: Pick<TeamBudget, 'refusal' | 'charge'>
 }
 
 /** 失败不扣费的模型线路全挂了（见 PacedStreamDeps.freeOnFailure） */
@@ -371,13 +365,6 @@ export function pacedStreamFn(inner: StreamFn, deps: PacedStreamDeps = {}): Stre
     const limiter = pick(model)
 
     void (async () => {
-      // 团队用量到顶：不排队、不重发，原因原样交给调用方（队员的活按停下收，制作人这一轮报错停住）
-      const refusal = deps.budget?.refusal()
-      if (refusal) {
-        out.push({ type: 'error', reason: 'error', error: failedAssistantMessage(model, refusal) })
-        out.end()
-        return
-      }
       let lastReason = ''
       let lastTransient = false
       for (let attempt = 0; attempt <= limiter.config.maxRetries; attempt++) {
@@ -439,8 +426,6 @@ export function pacedStreamFn(inner: StreamFn, deps: PacedStreamDeps = {}): Stre
                 break
               }
               release(overload ? { kind: 'overload' } : { kind: 'neutral' })
-              // 回到一半才失败的请求照样花了 token
-              deps.budget?.charge(event.error.usage)
               out.push(event)
               out.end()
               return
@@ -449,7 +434,6 @@ export function pacedStreamFn(inner: StreamFn, deps: PacedStreamDeps = {}): Stre
             out.push(event)
             forwarded++
             if (event.type === 'done') {
-              deps.budget?.charge(event.message.usage)
               release({ kind: 'ok', firstEventMs })
               out.end()
               return

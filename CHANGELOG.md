@@ -18,7 +18,6 @@
 - Box Plan：2026 Epic AI MegaJam 参赛登记和交卷；对话里可以让 Agent 用 `box_plan` 工具代办连接、登记、导入模型
 - 一键把盒子的对外 MCP 写进 Claude Code / Codex 的用户级配置
 - 对话导出 Markdown 带上每轮调用的工具和改动清单
-- 团队模式有 token 上限：一局累计 2000 万 token 后停下，用户接着跑再放一档
 - 接入 MiniMax 生图（image-01 / image-01-live）
 
 ### 变更

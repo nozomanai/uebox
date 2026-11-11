@@ -105,9 +105,7 @@ const optionsSchema = z.object({
       verdictAt: z.number().optional(),
       roundStartedAt: z.number().optional(),
       lastWriteAt: z.number().optional(),
-      boardNudged: z.boolean().optional(),
-      // 到顶后抬过的 token 上限，见 `team/teamBudget.ts`
-      tokenLimit: z.number().positive().optional()
+      boardNudged: z.boolean().optional()
     })
     .optional()
 })

@@ -120,7 +120,6 @@ import {
   createGoalLoop,
   parseGoalCommand
 } from '../agent-v3/core/goalLoop'
-import { billedTokens, teamBudgetFor } from '../agent-v3/core/team/teamBudget'
 import { activeLoop, parseTeamCommand } from '../agent-v3/core/team/teamCommand'
 import { runWithEditorKey } from '../agent-v3/core/team/editorKey'
 import { createTeamStore } from '../agent-v3/core/team/teamStore'
@@ -632,18 +631,6 @@ async function prepareTeam(
   // 上次运行没交回的活（盒子关了、崩了）不会再交回来了；不收掉，界面上会一直挂着「正在写」
   await store.closeOpenJobs('上次运行中断，这件活没有交回').catch(() => undefined)
   ctx.pacedRequests = true
-  // 一局的 token 封顶（`core/team/teamBudget.ts`）。已用量拿盘上的总账对一次：盒子重启后内存里是 0。
-  // 走到这里的都是人的动作（发了一条消息、点了「接着跑」；自动续跑不经过这里）：
-  // 已经到顶就抬一档并落盘，不然这一轮第一个请求就会被挡回去
-  const budget = teamBudgetFor(ctx.sessionId)
-  budget.setLimit(team.tokenLimit)
-  const ledger = await store.usage().catch(() => null)
-  if (ledger) budget.seed(billedTokens(ledger.total))
-  if (budget.exhausted()) {
-    options.team = { ...team, tokenLimit: budget.raise() }
-    await saveExecutionOptions(ctx.sessionId, options)
-  }
-  ctx.teamBudget = budget
   // 团队模式统一全放行：队员（和制作人那几个建工程、开工程的动作）不弹确认框，由模型自己判断。
   // 队员经 `...parent` 继承这一档。和混合团队的默认一致，三种跑法同一个规矩
   ctx.approvalMode = 'yolo'

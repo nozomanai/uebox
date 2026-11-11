@@ -118,7 +118,6 @@ import {
 } from './team/teamTools'
 import { createStatusTool } from './team/teamStatus'
 import { pacedStreamFn, stallGuardStreamFn, type PacedStreamDeps } from './team/requestGate'
-import type { TeamBudget } from './team/teamBudget'
 import { diagnosedStreamFn, dumpRejectedRequest, formatRequestRecord } from './requestDiagnostics'
 import type { ExperienceRuntime } from '../experience/runtime'
 import { createSessionExperience } from '../experience/session'
@@ -308,11 +307,6 @@ export interface SessionContext {
    * 几个队员同时请模型时，按网关的实际承受力排队，卡死的请求退避重发。
    */
   pacedRequests?: boolean
-  /**
-   * 工作室一局的 token 封顶（`core/team/teamBudget.ts`）。宿主在 `prepareTeam` 里挂上，
-   * 子 agent 继承同一个对象：制作人、队员、验收员、`task` 子任务累计到顶就都不再发请求
-   */
-  teamBudget?: TeamBudget
   /**
    * 这一轮已经自动续跑了几次（`core/autoResume.ts`）。只进诊断日志，
    * 断线之后回头查能分清「第一次请求」和「续跑出去的那次」
@@ -776,7 +770,7 @@ export async function createUnrealAgent(ctx: SessionContext): Promise<CreatedAge
   })
   const freeOnFailure = runtime.freeOnFailure
   const streamFn = ctx.pacedRequests
-    ? pacedStreamFn(diagnosed, { onRetry, freeOnFailure, budget: ctx.teamBudget })
+    ? pacedStreamFn(diagnosed, { onRetry, freeOnFailure })
     : stallGuardStreamFn(diagnosed, { onRetry, freeOnFailure })
 
   // skill 清单在 system prompt 里常驻，正文按需加载（渐进披露）。

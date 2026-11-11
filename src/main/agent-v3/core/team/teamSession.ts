@@ -45,8 +45,6 @@ export interface TeamState {
   lastWriteAt?: number
   /** 这一轮已经为任务板提醒过了。每条真人消息清零 */
   boardNudged?: boolean
-  /** 这一局的 token 上限（`teamBudget.ts`）。到顶后用户接着跑才有；没有就是默认的一档 */
-  tokenLimit?: number
 }
 
 export const MAX_TEAM_NUDGES = 2
