@@ -25,7 +25,7 @@
 import { spawn, type ChildProcess } from 'child_process'
 import { createWriteStream, promises as fs } from 'fs'
 import { constants, setPriority } from 'os'
-import { basename, dirname, join, resolve } from 'path'
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path'
 import { z } from 'zod'
 
 import { defineTool, type UnrealAgentTool } from '../defineTool'
@@ -43,6 +43,8 @@ export function buildUatArgs(input: {
   configuration: PackageConfiguration
   archiveDir: string
   platform: 'Win64' | 'Mac'
+  /** 只烘焙这几张地图；不给 = 工程里所有地图 */
+  maps?: string[]
 }): string[] {
   return [
     'BuildCookRun',
@@ -53,7 +55,7 @@ export function buildUatArgs(input: {
     `-serverconfig=${input.configuration}`,
     '-build',
     '-cook',
-    '-allmaps',
+    input.maps?.length ? `-map=${input.maps.join('+')}` : '-allmaps',
     '-stage',
     '-pak',
     '-archive',
@@ -61,6 +63,29 @@ export function buildUatArgs(input: {
     '-utf8output',
     '-unattended'
   ]
+}
+
+/**
+ * 地图参数规整成 UAT `-map=` 认的写法：`/Game/Maps/Main` 或 `Main`，去掉 `.umap` 和对象名后缀。
+ * 名字里只许字母、数字、下划线、连字符和斜杠 —— `+` 是 UAT 的分隔符，其余字符进不了命令行。
+ */
+export function normalizeMaps(maps: string[] | undefined): string[] {
+  const out: string[] = []
+  for (const raw of maps ?? []) {
+    const name = raw
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/\.umap$/i, '')
+      .replace(/\.[A-Za-z0-9_]+$/, '')
+    if (!name) continue
+    if (!/^[A-Za-z0-9_\-/]+$/.test(name)) {
+      throw new Error(
+        `地图「${raw}」的写法不对：给地图名（Main）或资产路径（/Game/Maps/Main），只能有字母、数字、下划线、连字符和斜杠`
+      )
+    }
+    if (!out.includes(name)) out.push(name)
+  }
+  return out
 }
 
 /**
@@ -240,6 +265,13 @@ const packageInput = z.object({
     .optional()
     .default('Development')
     .describe('Development 带日志和控制台，适合冒烟和排错；Shipping 是发行版'),
+  maps: z
+    .array(z.string())
+    .optional()
+    .describe(
+      '只烘焙这几张地图（地图名或 /Game/ 路径），要带上启动地图和游戏里会切到的每一张。' +
+        '省略 = 工程里所有地图，带着示例和测试地图时包体会大很多'
+    ),
   output_dir: z.string().optional().describe('输出目录。省略 = <工程>/Saved/UEBoxBuilds/<时间>')
 })
 
@@ -263,9 +295,11 @@ export function createPackageTool(): UnrealAgentTool<PackageResult> {
       '要几分钟到几十分钟，以较低的 CPU 优先级跑，不抢用户前台。' +
       '返回 exe 路径和完整日志路径；失败时附日志里的关键报错。' +
       '打包前先保存编辑器里的改动 —— 打包读的是磁盘上的资产。' +
+      '默认烘焙工程里所有地图；要控制包体（itch.io 网页上传上限 1 GB）时用 maps 只打游戏真正用到的地图。' +
       '打包出来之后用 project_smoke_test 起一次看会不会崩。',
     input: packageInput,
-    execute: async ({ project_path, configuration, output_dir }, ctx) => {
+    execute: async ({ project_path, configuration, output_dir, maps }, ctx) => {
+      const cookMaps = normalizeMaps(maps)
       const projectDir = project_path ?? getTargetProjectPath()
       if (!projectDir)
         throw new Error('不知道打包哪个工程：这一轮没有连着的工程，请给 project_path')
@@ -287,7 +321,8 @@ export function createPackageTool(): UnrealAgentTool<PackageResult> {
         uproject,
         configuration,
         archiveDir: outputDir,
-        platform: process.platform === 'darwin' ? 'Mac' : 'Win64'
+        platform: process.platform === 'darwin' ? 'Mac' : 'Win64',
+        maps: cookMaps
       })
       // 先把命令行拼出来：带了没法安全传递的字符就在起进程之前报错。只有 Windows 走 cmd
       const commandLine =
@@ -355,7 +390,9 @@ export function createPackageTool(): UnrealAgentTool<PackageResult> {
       }
       if (result.success) {
         return {
-          text: `打包成功（${minutes} 分钟）。\nexe：${exe}\n输出目录：${outputDir}\n完整日志：${logPath}`,
+          text:
+            `打包成功（${minutes} 分钟）。\nexe：${exe}\n输出目录：${outputDir}\n完整日志：${logPath}` +
+            (cookMaps.length ? `\n烘焙的地图：${cookMaps.join('、')}` : ''),
           details: result
         }
       }
@@ -488,6 +525,24 @@ export function zipArgs(parent: string, folder: string, dest: string): string[] 
   return ['-a', '-c', '-f', dest, '--exclude', '*.pdb', '-C', parent, folder]
 }
 
+/**
+ * 玩家要的那一整层目录（UE5 是 `Windows/`）。`project_package` 回的是这一层里的启动器 exe，
+ * 但人手里常是 `Windows/<工程>/Binaries/Win64/` 下的那个真 exe —— 只压它所在的目录，
+ * 压出来的包缺 Content，起不来。
+ */
+export function packageRootOf(exePath: string): string {
+  const dir = dirname(exePath)
+  const binaries = dirname(dir)
+  if (basename(binaries).toLowerCase() === 'binaries') return dirname(dirname(binaries))
+  return dir
+}
+
+/** child 是不是 parent 自己或它里面的路径 */
+export function isInside(parent: string, child: string): boolean {
+  const rel = relative(parent, child)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(2)} GB`
   return `${Math.max(1, Math.round(bytes / 1_000_000))} MB`
@@ -524,10 +579,14 @@ export function createZipBuildTool(): UnrealAgentTool<ZipResult> {
       await fs.access(exe_path).catch(() => {
         throw new Error(`找不到 ${exe_path}`)
       })
-      // exe 所在的那一层（UE5 是 Windows/）就是玩家要的全部文件
-      const buildDir = dirname(exe_path)
+      const buildDir = packageRootOf(resolve(exe_path))
       const parent = dirname(buildDir)
       const destDir = resolve(output_dir ?? parent)
+      if (isInside(buildDir, destDir)) {
+        throw new Error(
+          `output_dir 不能放在要压缩的目录里（${buildDir}）：zip 会把自己也压进去。换一个目录，或者省略`
+        )
+      }
       await fs.mkdir(destDir, { recursive: true })
       const zipPath = join(destDir, name)
       await fs.rm(zipPath, { force: true })
@@ -537,6 +596,12 @@ export function createZipBuildTool(): UnrealAgentTool<ZipResult> {
         process.platform === 'win32'
           ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
           : '/usr/bin/tar'
+      await fs.access(tar).catch(() => {
+        throw new Error(
+          `系统里没有 ${tar}（Windows 10 1803 之前的系统不带）。` +
+            `请在资源管理器里右键「${buildDir}」→ 发送到 → 压缩(zipped)文件夹，压好后改名为 ${name}`
+        )
+      })
       const child = spawn(tar, zipArgs(parent, basename(buildDir), zipPath), {
         windowsHide: true,
         stdio: ['ignore', 'ignore', 'pipe']

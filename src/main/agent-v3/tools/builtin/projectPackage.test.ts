@@ -13,7 +13,10 @@ import {
   createZipBuildTool,
   fatalLines,
   formatBytes,
+  isInside,
   keyErrors,
+  normalizeMaps,
+  packageRootOf,
   quoteForCmd,
   stageOf,
   zipArgs,
@@ -38,6 +41,29 @@ describe('UAT 参数', () => {
     }
     expect(args).toContain('-clientconfig=Development')
     expect(args).toContain('-archivedirectory=I:/UE Project/TD/Saved/UEBoxBuilds/x')
+    expect(args).toContain('-allmaps')
+  })
+
+  it('点了地图就只烘焙这几张，不再带 -allmaps', () => {
+    const args = buildUatArgs({
+      uproject: 'D:/TD/TD.uproject',
+      configuration: 'Development',
+      archiveDir: 'D:/out',
+      platform: 'Win64',
+      maps: ['/Game/Maps/Main', 'Menu']
+    })
+    expect(args).toContain('-map=/Game/Maps/Main+Menu')
+    expect(args).not.toContain('-allmaps')
+    expect(quoteForCmd('-map=/Game/Maps/Main+Menu')).toBe('-map=/Game/Maps/Main+Menu')
+  })
+
+  it('地图写法规整：去掉 .umap 和对象名后缀、去重，带怪字符的拒绝', () => {
+    expect(
+      normalizeMaps([' /Game/Maps/Main.Main ', 'Menu.umap', '\\Game\\Maps\\Main', '', 'Menu'])
+    ).toEqual(['/Game/Maps/Main', 'Menu'])
+    expect(normalizeMaps(undefined)).toEqual([])
+    expect(() => normalizeMaps(['Main+Other'])).toThrow(/写法不对/)
+    expect(() => normalizeMaps(['Main & calc'])).toThrow(/写法不对/)
   })
 
   it('路径有空格：-key=值 只包值，别的整体包', () => {
@@ -108,6 +134,22 @@ describe('打包版压 zip', () => {
   it('文件名只留英文字母、数字、连字符', () => {
     expect(zipFileName('Pixel Crew', 'Moon-Runner!')).toBe('PixelCrew_Moon-Runner.zip')
     expect(() => zipFileName('像素小队', 'Game')).toThrow(/英文/)
+  })
+
+  it('给的是 Binaries/Win64 下的真 exe 时，往上找到整个包的那一层', () => {
+    const root = join('D:', 'b', 'Windows')
+    expect(packageRootOf(join(root, 'TD.exe'))).toBe(root)
+    expect(packageRootOf(join(root, 'TD', 'Binaries', 'Win64', 'TD-Win64-Shipping.exe'))).toBe(
+      root
+    )
+  })
+
+  it('zip 不能放进要压缩的目录里', () => {
+    const root = join('D:', 'b', 'Windows')
+    expect(isInside(root, root)).toBe(true)
+    expect(isInside(root, join(root, 'out'))).toBe(true)
+    expect(isInside(root, join('D:', 'b'))).toBe(false)
+    expect(isInside(root, join('D:', 'b', 'Windows2'))).toBe(false)
   })
 
   it('tar 参数：zip 格式、去掉 pdb、第一层是 exe 所在目录', () => {

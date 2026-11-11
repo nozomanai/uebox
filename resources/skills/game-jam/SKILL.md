@@ -129,7 +129,8 @@ process, an audio list. Spend day 3 here, not on new features.
 4. `project_zip_build` with the English team and game names; it drops `.pdb` files and reports
    the size.
 
-Packaging cooks every map under Content; remove demo and test maps first.
+Packaging cooks every map under Content by default. Pass `maps` with the startup map and every
+map the game travels to, so demo and test maps stay out of the build.
 
 ### English pass (day 3, again on the last day)
 
