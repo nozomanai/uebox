@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance } from 'markdown-it'
 
-import { buildPathLinkHtml, createPathLinkRule, isFilesystemPath } from './markdownPathLinks'
+import {
+  buildPathLinkHtml,
+  createPathLinkRule,
+  installLocalLinkSupport,
+  isFilesystemPath,
+  localPathFromHref
+} from './markdownPathLinks'
+import { sanitizeRenderedHtml } from '@renderer/utils/sanitizeHtml'
 
 function createRenderer(): MarkdownItInstance {
   const md = new MarkdownIt({ html: true, linkify: true, breaks: true, typographer: true })
@@ -92,5 +99,40 @@ describe('createPathLinkRule', () => {
     const html = createRenderer().render('`C:/a<b>/c.txt`')
     expect(html).not.toContain('<b>')
     expect(html).toContain('&lt;b&gt;')
+  })
+})
+
+describe('localPathFromHref', () => {
+  it('还原盘符路径、file URL 和 UNC', () => {
+    expect(localPathFromHref('C:/x%20y/a.html')).toBe('C:/x y/a.html')
+    expect(localPathFromHref('C:%5Cx%5Ca.html')).toBe('C:\\x\\a.html')
+    expect(localPathFromHref('file:///C:/x/a.html')).toBe('C:/x/a.html')
+    expect(localPathFromHref('file://nas/share/a.html')).toBe('\\\\nas\\share\\a.html')
+  })
+
+  it('网页链接和相对路径不算', () => {
+    expect(localPathFromHref('https://example.com/a.html')).toBeNull()
+    expect(localPathFromHref('docs/a.html')).toBeNull()
+    expect(localPathFromHref('')).toBeNull()
+  })
+})
+
+describe('installLocalLinkSupport', () => {
+  function render(source: string): string {
+    const md = createRenderer()
+    installLocalLinkSupport(md)
+    return sanitizeRenderedHtml(md.render(source))
+  }
+
+  it('指向本地文件的 Markdown 链接消毒后仍是路径链接', () => {
+    expect(pathsIn(render('[index.html](C:/x/index.html)'))).toEqual(['C:/x/index.html'])
+    expect(pathsIn(render('[index.html](file:///C:/x/index.html)'))).toEqual(['C:/x/index.html'])
+    expect(pathsIn(render('[index.html](<C:/x y/index.html>)'))).toEqual(['C:/x y/index.html'])
+  })
+
+  it('网页链接不受影响', () => {
+    const html = render('[官网](https://uebox.ai)')
+    expect(html).toContain('href="https://uebox.ai"')
+    expect(pathsIn(html)).toEqual([])
   })
 })

@@ -58,7 +58,11 @@ import { copyImageToClipboard, downloadImage } from '@renderer/utils/imageBlob'
 import { useGlobalAudioStore } from '@renderer/store/modules/globalAudio'
 import { openImageViewer } from '@renderer/services/imageViewer'
 import { buildImageHtml, buildVideoHtml, createMediaPreviewRule } from './markdownMediaPreview'
-import { buildPathLinkHtml, createPathLinkRule } from './markdownPathLinks'
+import {
+  buildPathLinkHtml,
+  createPathLinkRule,
+  installLocalLinkSupport
+} from './markdownPathLinks'
 import ContextMenu from '@renderer/components/ContextMenu/ContextMenu.vue'
 import { openFilePath, useFilePathMenu } from '@renderer/composables/useFilePathMenu'
 import { createLatestValueScheduler } from './latestValueScheduler'
@@ -218,6 +222,9 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
   }
   return originalLinkOpen(tokens, idx, options, env, self)
 }
+
+// 指向本地文件的 Markdown 链接（[index.html](C:/x/index.html)）按路径链接处理
+installLocalLinkSupport(md)
 
 // 内容长度限制 (500KB - 支持大型 PDF 文档)
 const MAX_CONTENT_LENGTH = 500000

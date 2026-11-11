@@ -1,4 +1,4 @@
-import type { StateCore, Token } from 'markdown-it'
+import type { MarkdownIt, StateCore, Token } from 'markdown-it'
 
 /**
  * 对话正文里的本地 / 网络路径变成可点的链接。
@@ -162,5 +162,59 @@ export function createPathLinkRule(
 
       if (changed) token.children = next
     }
+  }
+}
+
+/**
+ * 把链接地址还原成本地 / 网络路径；不是本地路径时返回 null。
+ *
+ * 模型交付文件时常写成 Markdown 链接：`[index.html](C:/x/index.html)`、
+ * `[index.html](file:///C:/x/index.html)`。前者渲染成 `<a href="C:/…">`，
+ * 消毒时 `C:` 被当成未知协议摘掉 href，点了没反应；后者 markdown-it 默认不认。
+ * @param href 链接地址（可能已被 markdown-it 百分号编码）
+ */
+export function localPathFromHref(href: string): string | null {
+  let value = String(href ?? '').trim()
+  if (!value) return null
+
+  const fileUrl = /^file:\/\/(.*)$/i.exec(value)
+  if (fileUrl) {
+    // file:///C:/a → C:/a；file://server/share/a → //server/share/a
+    value = fileUrl[1].startsWith('/') ? fileUrl[1].slice(1) : `//${fileUrl[1]}`
+  }
+
+  try {
+    value = decodeURIComponent(value)
+  } catch {
+    // 编码不完整就按原样判断
+  }
+  if (value.startsWith('//')) value = value.replace(/\//g, '\\')
+
+  return isFilesystemPath(value) ? value : null
+}
+
+/**
+ * 让指向本地文件的 Markdown 链接和正文里的路径一样可点：
+ * 链接改成 `.fs-path`，左键用系统默认程序打开、右键出路径菜单。
+ * @param md markdown-it 实例；要在其它 link_open 覆写之后调用
+ */
+export function installLocalLinkSupport(md: MarkdownIt): void {
+  const validateLink = md.validateLink.bind(md)
+  md.validateLink = (url: string): boolean => /^file:\/\//i.test(url.trim()) || validateLink(url)
+
+  const linkOpen =
+    md.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self): string => self.renderToken(tokens, idx, options))
+
+  md.renderer.rules.link_open = (tokens, idx, options, env, self): string => {
+    const token = tokens[idx]
+    const path = localPathFromHref(String(token.attrGet('href') ?? ''))
+    if (path) {
+      token.attrSet('href', '#')
+      token.attrJoin('class', 'fs-path')
+      token.attrSet('data-fs-path', path)
+      token.attrSet('title', path)
+    }
+    return linkOpen(tokens, idx, options, env, self)
   }
 }
